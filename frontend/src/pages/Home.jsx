@@ -10,19 +10,48 @@ const Home = () => {
     <div className="min-h-screen paper-grain">
       <BrandHeader />
       <main className="mx-auto max-w-7xl px-6 pb-24 pt-16">
-        <div className="max-w-3xl rise">
-          <span className="news-flag inline-block rounded-sm px-3 py-1 text-xl">NEWS</span>
-          <h1 className="mt-6 font-serif text-4xl font-black leading-[1.05] tracking-tight text-forsides-ink sm:text-5xl lg:text-6xl">
-            Forsides News Studio
-          </h1>
-          <p className="mt-4 font-serif text-xl italic text-forsides-slate sm:text-2xl">
-            De la veille à la publication LinkedIn.
-          </p>
-          <p className="mt-4 max-w-2xl text-base leading-relaxed text-forsides-slate">
-            Une chaîne éditoriale professionnelle qui sélectionne les meilleurs sujets de
-            l'assurance et de l'actuariat, trouve le meilleur angle, et produit un post LinkedIn
-            complet (caption et visuel) cohérent avec l'identité FORSIDES.
-          </p>
+        <div className="grid items-center gap-10 lg:grid-cols-[1.5fr_1fr]">
+          <div className="max-w-3xl rise">
+            <span className="news-flag inline-block rounded-sm px-3 py-1 text-xl">NEWS</span>
+            <h1 className="mt-6 font-serif text-4xl font-black leading-[1.05] tracking-tight text-forsides-ink sm:text-5xl lg:text-6xl">
+              Forsides News Studio
+            </h1>
+            <p className="mt-4 font-serif text-xl italic text-forsides-slate sm:text-2xl">
+              De la veille à la publication LinkedIn.
+            </p>
+            <p className="mt-4 max-w-2xl text-base leading-relaxed text-forsides-slate">
+              Une chaîne éditoriale professionnelle qui sélectionne les meilleurs sujets de
+              l'assurance et de l'actuariat, trouve le meilleur angle, et produit un post LinkedIn
+              complet (caption et visuel) cohérent avec l'identité FORSIDES.
+            </p>
+          </div>
+
+          <div className="rise hidden justify-center lg:flex" style={{ animationDelay: "160ms" }}>
+            <div className="w-full max-w-[300px] rotate-2 rounded-xl border border-slate-200/80 bg-[#F7E8E4] p-5 shadow-2xl transition-transform hover:rotate-0" style={{ aspectRatio: "4/5" }}>
+              <div className="flex items-start justify-between">
+                <span className="news-flag rounded-[3px] px-2.5 py-1 text-2xl shadow-md">NEWS</span>
+                <span className="mt-1 font-sans text-[11px] font-extrabold tracking-[0.12em] text-forsides-ink">
+                  FORSIDES
+                </span>
+              </div>
+              <div className="mt-1 font-mono text-[9px] tracking-[0.2em] text-forsides-ink/70">
+                SEPTEMBRE 2026
+              </div>
+              <div className="mt-5 space-y-1.5">
+                <div className="h-3 w-full rounded-sm bg-forsides-bordeaux/85" />
+                <div className="h-3 w-5/6 rounded-sm bg-forsides-bordeaux/85" />
+                <div className="h-3 w-2/3 rounded-sm bg-forsides-bordeaux/85" />
+              </div>
+              <div className="mt-5 h-[42%] w-full overflow-hidden rounded-md bg-[#e0cfc8]">
+                <div className="h-full w-full bg-gradient-to-br from-[#d8c2ba] to-[#b98d80]" />
+              </div>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <span className="h-px flex-1 bg-forsides-bordeaux/50" />
+                <span className="font-mono text-[9px] italic text-forsides-bordeaux">for you, by your side</span>
+                <span className="h-px flex-1 bg-forsides-bordeaux/50" />
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="mt-14 grid gap-6 lg:grid-cols-2">
