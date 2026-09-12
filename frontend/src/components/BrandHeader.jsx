@@ -10,13 +10,14 @@ export const BrandHeader = () => {
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <Link to="/" data-testid="brand-logo" className="group flex items-center gap-2.5">
-          <img
-            src="/forsides-logo.png"
-            alt="FORSIDES"
-            className="h-9 w-auto"
-          />
-          <span className="hidden font-mono text-[9px] uppercase tracking-[0.34em] text-forsides-slate sm:inline">
-            News Studio
+          <img src="/forsides-mark.png" alt="FORSIDES" className="h-9 w-auto" />
+          <span className="leading-none">
+            <span className="block font-sans text-[15px] font-extrabold tracking-[0.14em] text-forsides-ink">
+              FORSIDES
+            </span>
+            <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-[0.34em] text-forsides-slate">
+              News Studio
+            </span>
           </span>
         </Link>
         <nav className="flex items-center gap-1 text-sm">
@@ -52,6 +53,17 @@ export const BrandHeader = () => {
             }`}
           >
             Éditeur libre
+          </Link>
+          <Link
+            to="/history"
+            data-testid="nav-history"
+            className={`rounded-full px-4 py-1.5 font-medium transition-colors ${
+              pathname === "/history"
+                ? "bg-forsides-red text-white"
+                : "text-forsides-slate hover:text-forsides-red"
+            }`}
+          >
+            Mes posts
           </Link>
         </nav>
       </div>

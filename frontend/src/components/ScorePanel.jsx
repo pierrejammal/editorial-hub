@@ -57,7 +57,8 @@ export const ScorePanel = ({ scoring }) => {
       </div>
 
       <div className="mt-6 space-y-2.5">
-        {SUB_SCORES.map((s) => {
+        {SUB_SCORES.some((s) => scoring[s.key]?.score != null) &&
+          SUB_SCORES.map((s) => {
           const val = scoring[s.key]?.score ?? 0;
           return (
             <div key={s.key} data-testid={`subscore-${s.key}`} className="flex items-center gap-3">

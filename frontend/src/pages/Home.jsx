@@ -21,7 +21,7 @@ const Home = () => {
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-forsides-slate">
             Une chaîne éditoriale professionnelle qui sélectionne les meilleurs sujets de
             l'assurance et de l'actuariat, trouve le meilleur angle, et produit un post LinkedIn
-            complet — caption et visuel — cohérent avec l'identité FORSIDES.
+            complet (caption et visuel) cohérent avec l'identité FORSIDES.
           </p>
         </div>
 
@@ -93,15 +93,38 @@ const Home = () => {
         </div>
 
         <div className="mt-16 rounded-2xl border border-slate-200/80 bg-white/60 p-8">
-          <div className="mb-6 font-mono text-[10px] uppercase tracking-[0.24em] text-slate-400">
-            La chaîne éditoriale
+          <div className="grid gap-10 lg:grid-cols-[1.4fr_1fr]">
+            <div>
+              <div className="mb-6 font-mono text-[10px] uppercase tracking-[0.24em] text-slate-400">
+                La chaîne éditoriale
+              </div>
+              <WorkflowStepper active={7} />
+              <p className="mt-6 max-w-3xl text-sm leading-relaxed text-forsides-slate">
+                Recherche · Collecte · Filtrage · Déduplication · Scoring · Triage · Sélection ·
+                Analyse éditoriale · Choix de l'angle · Génération · Contrôle qualité · Visuel.
+                Chaque publication doit donner l'impression qu'un professionnel de la veille a
+                travaillé dessus.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 lg:border-l lg:border-slate-200 lg:pl-10">
+              {[
+                { n: "/100", l: "Score éditorial" },
+                { n: "5–6", l: "Sujets triés" },
+                { n: "4:5", l: "Visuel 1200×1500" },
+              ].map((s) => (
+                <div key={s.l} className="flex flex-col items-start justify-center rounded-xl bg-forsides-cream p-4">
+                  <span className="font-serif text-2xl font-black text-forsides-red">{s.n}</span>
+                  <span className="mt-1 text-xs leading-tight text-forsides-slate">{s.l}</span>
+                </div>
+              ))}
+              <div className="col-span-3 mt-1 flex items-center gap-3 rounded-xl bg-forsides-ink p-4">
+                <span className="news-flag rounded-sm px-2 py-0.5 text-sm">NEWS</span>
+                <span className="text-sm font-medium text-white">
+                  Identité FORSIDES appliquée automatiquement à chaque visuel.
+                </span>
+              </div>
+            </div>
           </div>
-          <WorkflowStepper active={7} />
-          <p className="mt-6 max-w-3xl text-sm leading-relaxed text-forsides-slate">
-            Recherche · Collecte · Filtrage · Déduplication · Scoring · Triage · Sélection · Analyse
-            éditoriale · Choix de l'angle · Génération · Contrôle qualité · Visuel. Chaque
-            publication doit donner l'impression qu'un professionnel de la veille a travaillé dessus.
-          </p>
         </div>
       </main>
     </div>

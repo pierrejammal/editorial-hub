@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 import { BrandHeader } from "@/components/BrandHeader";
 import { VisualPreview } from "@/components/VisualPreview";
+import { PostActions } from "@/components/PostActions";
 import { composeFromText } from "@/lib/api";
 import { Sparkles, Loader2, PenLine } from "lucide-react";
 
@@ -16,6 +17,7 @@ const derive = (t) => (t.split("\n").find((l) => l.trim().length > 0) || "").tri
 const Compose = () => {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [thumb, setThumb] = useState("");
   const [post, setPost] = useState({
     meta: { date_label: dateLabel(), source: "" },
     editorial: {},
@@ -69,17 +71,25 @@ const Compose = () => {
     <div className="min-h-screen paper-grain">
       <BrandHeader />
       <main className="mx-auto max-w-7xl px-6 pb-24 pt-10">
-        <div className="rise">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-forsides-red/10 text-forsides-red">
-            <PenLine className="h-6 w-6" />
+        <div className="rise flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-forsides-red/10 text-forsides-red">
+              <PenLine className="h-6 w-6" />
+            </div>
+            <h1 className="mt-5 font-serif text-4xl font-black tracking-tight text-forsides-ink">
+              Éditeur libre
+            </h1>
+            <p className="mt-3 max-w-2xl text-forsides-slate">
+              Collez votre texte LinkedIn à gauche, le visuel FORSIDES se compose en direct à droite.
+              Optimisez le titre et le format avec l'IA, puis exportez le post complet.
+            </p>
           </div>
-          <h1 className="mt-5 font-serif text-4xl font-black tracking-tight text-forsides-ink">
-            Éditeur libre
-          </h1>
-          <p className="mt-3 max-w-2xl text-forsides-slate">
-            Collez votre texte LinkedIn à gauche, le visuel FORSIDES se compose en direct à droite.
-            Optimisez le titre et le format avec l'IA, puis exportez le post complet.
-          </p>
+          <PostActions
+            post={post}
+            thumb={thumb}
+            origin="compose"
+            onSaved={(id) => setPost((p) => ({ ...p, id }))}
+          />
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_0.9fr]">
@@ -110,7 +120,7 @@ const Compose = () => {
           </div>
 
           <div className="lg:sticky lg:top-24 lg:self-start">
-            <VisualPreview post={post} onVisualChange={onVisualChange} />
+            <VisualPreview post={post} onVisualChange={onVisualChange} onThumb={setThumb} />
           </div>
         </div>
       </main>

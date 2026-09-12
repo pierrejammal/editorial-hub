@@ -24,7 +24,13 @@ Application web premium transformant une actualité/sujet en post LinkedIn prêt
 - Endpoints directs : /api/caption (texte pur, CAPTION_SYSTEM), /api/quality, /api/visual-image (Gemini).
 
 ## Status
-- Testé : backend 100% (11/11), frontend 100% (Modes 1/2/3, Studio, export). Timeout 60s résolu.
+- Testé : backend 100%, frontend 100% (Modes 1/2/3, Studio, export, + Historique/Programmation/2 Concepts/Logos auto). Timeout 60s résolu.
+
+## Added features (v2)
+- **Mes posts (Historique)** : enregistrer un post, galerie (thumbnail + score + date programmée), rouvrir dans le Studio, supprimer. Endpoints /api/posts/save (upsert), GET /api/posts, GET /api/post/{id}, DELETE /api/posts/{id}.
+- **Programmation LinkedIn** : dialogue date/heure, statut « Programmé » stocké. Publication LinkedIn réelle = **SIMULÉE (mock)**, clairement signalée (bannière + toast).
+- **2 concepts** : aperçu côte à côte Version A (Actualité/image) et Version B (Data/Insight) avant génération, sélection en un clic.
+- **Logos institutionnels auto** : ACPR & Banque de France (vrais logos), EIOPA/Cour des comptes/DREES/France Assureurs/INSEE/OCDE/Commission européenne (emblèmes typographiques on-brand) affichés automatiquement selon la source ; upload manuel toujours possible.
 
 ## Backlog / next
 - P2 : bibliothèque de logos institutionnels auto (EIOPA/ACPR/Cour des comptes) au lieu d'upload manuel.

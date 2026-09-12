@@ -528,6 +528,49 @@ async def get_post(post_id: str):
     return doc
 
 
+class SavePostReq(BaseModel):
+    id: Optional[str] = None
+    title: str = ""
+    caption: str = ""
+    thumbnail: str = ""
+    meta: Dict[str, Any] = Field(default_factory=dict)
+    scoring: Optional[Dict[str, Any]] = None
+    editorial: Optional[Dict[str, Any]] = None
+    visual: Optional[Dict[str, Any]] = None
+    quality: Optional[Dict[str, Any]] = None
+    sources: Optional[List[Dict[str, Any]]] = None
+    scheduled_at: Optional[str] = None
+    origin: str = "studio"
+
+
+@api_router.post("/posts/save")
+async def save_post(req: SavePostReq):
+    pid = req.id or str(uuid.uuid4())
+    doc = req.model_dump()
+    doc["id"] = pid
+    doc["saved"] = True
+    doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.posts.update_one({"id": pid}, {"$set": doc}, upsert=True)
+    return {"id": pid}
+
+
+@api_router.get("/posts")
+async def list_posts():
+    cursor = db.posts.find(
+        {"saved": True},
+        {"_id": 0, "id": 1, "title": 1, "caption": 1, "thumbnail": 1, "meta": 1,
+         "scoring.total": 1, "scheduled_at": 1, "updated_at": 1, "origin": 1},
+    ).sort("updated_at", -1).limit(100)
+    items = await cursor.to_list(100)
+    return {"posts": items}
+
+
+@api_router.delete("/posts/{post_id}")
+async def delete_post(post_id: str):
+    await db.posts.delete_one({"id": post_id})
+    return {"ok": True}
+
+
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

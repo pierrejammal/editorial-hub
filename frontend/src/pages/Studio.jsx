@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { BrandHeader } from "@/components/BrandHeader";
 import { WorkflowStepper } from "@/components/WorkflowStepper";
@@ -6,12 +6,14 @@ import { ScorePanel } from "@/components/ScorePanel";
 import { AnalysisPanel } from "@/components/AnalysisPanel";
 import { CaptionEditor } from "@/components/CaptionEditor";
 import { VisualPreview } from "@/components/VisualPreview";
+import { PostActions } from "@/components/PostActions";
 import { useStudio } from "@/context/StudioContext";
 import { ArrowLeft } from "lucide-react";
 
 const Studio = () => {
-  const { post } = useStudio();
+  const { post, setPost } = useStudio();
   const nav = useNavigate();
+  const [thumb, setThumb] = useState("");
 
   useEffect(() => {
     if (!post) nav("/");
@@ -32,8 +34,11 @@ const Studio = () => {
           >
             <ArrowLeft className="h-4 w-4" /> Retour
           </Link>
-          <div className="hidden md:block">
-            <WorkflowStepper active={7} />
+          <div className="flex items-center gap-4">
+            <div className="hidden lg:block">
+              <WorkflowStepper active={7} />
+            </div>
+            <PostActions post={post} thumb={thumb} origin="studio" onSaved={(id) => setPost((p) => ({ ...p, id }))} />
           </div>
         </div>
 
@@ -65,7 +70,7 @@ const Studio = () => {
             <CaptionEditor />
           </div>
           <div className="lg:sticky lg:top-24 lg:self-start">
-            <VisualPreview />
+            <VisualPreview onThumb={setThumb} />
           </div>
         </div>
       </main>

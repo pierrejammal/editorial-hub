@@ -7,6 +7,7 @@ import Analyze from "@/pages/Analyze";
 import Research from "@/pages/Research";
 import Compose from "@/pages/Compose";
 import Studio from "@/pages/Studio";
+import History from "@/pages/History";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
             <Route path="/analyze" element={<Analyze />} />
             <Route path="/research" element={<Research />} />
             <Route path="/compose" element={<Compose />} />
+            <Route path="/history" element={<History />} />
             <Route path="/studio" element={<Studio />} />
           </Routes>
         </BrowserRouter>

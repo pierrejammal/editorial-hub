@@ -42,3 +42,12 @@ export const checkQuality = (caption, context) =>
 
 export const genVisual = (payload) =>
   http.post("/visual-image", payload).then((r) => r.data);
+
+export const savePost = (payload) =>
+  http.post("/posts/save", payload).then((r) => r.data);
+
+export const listPosts = () => http.get("/posts").then((r) => r.data.posts);
+
+export const getPost = (id) => http.get(`/post/${id}`).then((r) => r.data);
+
+export const deletePost = (id) => http.delete(`/posts/${id}`).then((r) => r.data);

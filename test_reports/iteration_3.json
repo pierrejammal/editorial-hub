@@ -1,0 +1,38 @@
+{
+  "summary": "Validated the 4 NEW FORSIDES features (History gallery, Save+Schedule, 2 Concepts, Auto source logo) plus regression on Studio/Compose. Backend: 5/5 new pytest cases PASS for /api/posts/save (upsert), GET /api/posts (projection with title, meta, scoring.total, scheduled_at, thumbnail; saved=true filter), GET /api/post/{id} (full doc, no _id, saved=true), DELETE /api/posts/{id} (returns {ok:true} and 404 afterwards). Previous iteration_2 job flows (Modes 1/2/3, /api/caption, /api/quality, /api/visual-image) still green. Frontend: on /compose typed text, post-save toast 'Post enregistré dans Mes posts' fires, post-schedule-open opens schedule-dialog, schedule-datetime + schedule-confirm shows toast containing 'Programmé' and 'simulation'. concepts-toggle shows concept-picker with concept-A and concept-B; clicking concept-B sets visual-format-B to active (bg-forsides-red), clicking concept-A sets visual-format-A active. Seeded a post via API with meta.source='ACPR', navigated to /history — history-card rendered with title, ACPR source label, scheduled date '15/08/2026'. Clicking the card navigated to /studio, populated the score panel (82/100 TRÈS FORT), caption-textarea, and visual-canvas — canvas renders the ACPR logo top-right (auto source logo, no crash). /logos/acpr.png and /logos/banquefrance.png both return 200 with content-type image/png. Studio regression buttons present: caption-regenerate/copy/quality, visual-download, visual-format-A/B.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Studio (reopened from history)", "issues": ["When a post is opened from /history and only scoring.total was persisted, the per-criterion score bars all display 0/xx even though the total shows 82/100. Consider persisting the full scoring object or hiding sub-bars when subscores are absent."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_history_posts.py",
+    "/app/backend/tests/test_forsides_api.py",
+    "/app/test_reports/pytest/history_results.xml"
+  ],
+  "action_items": [
+    "(Optional cosmetic) In Studio ScorePanel, hide/dim per-criterion bars when subscores are missing (e.g. after re-opening a saved post that only persisted scoring.total)."
+  ],
+  "critical_code_review_comments": [
+    "server.py: SavePostReq + upsert on {id} is clean and idempotent; GET /api/posts correctly filters saved=true and projects only the list-view fields (perf-friendly).",
+    "History.jsx and PostActions.jsx wire savePost/listPosts/getPost/deletePost cleanly; onThumb produces a JPEG data URL from the live canvas for the gallery card (nice touch, keeps DB payloads small).",
+    "visualRender.js sourceIdentity + LIB is well-structured: ACPR/Banque de France resolve to real PNG logos, others fall back to a typographic emblem — safe (never crashes) and on-brand.",
+    "LinkedIn scheduling is intentionally mocked — the toast + amber warning banner ('Simulation : la connexion directe à LinkedIn n'est pas activée') makes this explicit to the user. Not a bug."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_history_posts.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "In-test only. Backend pytest creates a TEST_history_post and deletes it. Frontend Playwright seeds one post via /api/posts/save and cleans it up via DELETE at end of run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New endpoints POST /api/posts/save (upsert), GET /api/posts, GET /api/post/{id}, DELETE /api/posts/{id} are covered by /app/backend/tests/test_history_posts.py (runs in ~1.5s). Frontend testids for new features: nav-history, history-empty, history-card-{i}, history-delete-{i}, post-save, post-schedule-open, schedule-dialog, schedule-datetime, schedule-confirm, concepts-toggle, concept-picker, concept-A, concept-B. LinkedIn scheduling is deliberately simulated. Auto source logo lives in /app/frontend/src/lib/visualRender.js (LIB + sourceIdentity + sourceLogoSrc); real PNGs available at /logos/acpr.png and /logos/banquefrance.png, others render as on-brand typographic emblems.",
+  "rca of the issue": "N/A — all 4 new features passed end-to-end."
+}
