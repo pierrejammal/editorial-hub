@@ -1,0 +1,47 @@
+{
+  "summary": "Tested FORSIDES News Studio backend + frontend. Frontend loads correctly (Home/Analyze/Research pages with all required data-testids). Backend endpoints work correctly when called directly from the container (localhost:8001) but two long-running endpoints exceed the public URL gateway timeout (~60s Cloudflare) and return 502: /api/search (~130s) and /api/analyze-url on substantive content (~60s+). This effectively breaks Mode 2 flow and blocks Mode 1 for most real articles via the public URL that the frontend uses. Endpoints tested OK via public URL: GET /api/ (healthy), /api/analyze-topic (~47s), /api/caption (all actions), /api/quality (~14s), /api/visual-image Gemini (~10s). Because /api/search 502s, the Research → Studio user flow cannot complete end-to-end via the frontend.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/search", "issue": "Returns 502 Bad Gateway via public URL after ~60s (Cloudflare timeout). Locally the endpoint completes successfully in ~130s. The Claude LLM call receives 30 candidates and a heavy JSON schema, which makes the whole request exceed the 60s edge timeout. Impact: Mode 2 (Lancer une veille) is entirely broken in production; TopicCards will never render.", "priority": "CRITICAL"},
+      {"endpoint": "/api/analyze-url", "issue": "Returns 502 via public URL after ~60s for URLs with substantive content (verified with a Wikipedia Solvency II page - 60.2s → 502). Even though frontend axios timeout is 180s, Cloudflare kills the request at ~60s. Mode 1 flow will fail on any real institutional article.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "/api/analyze-url", "issue": "Many institutional French sites return 403 Forbidden to the scraper's UA (argusdelassurance.com, acpr.banque-france.fr) or 404 for expected paths (eiopa.europa.eu/publications/..., franceassureurs.fr). Error is surfaced as HTTP 400 with detail, but end-user experience is broken. Consider stronger UA rotation, Referer header, or a fallback message specifying that the site blocks bots."},
+      {"endpoint": "/api/search", "issue": "Score sorting is enforced only by prompt instruction, not by code. Test verified sorting was respected but this is not guaranteed; wrap topics with a Python-side sort by score desc to make it deterministic."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Mode 2 - Research", "issue": "The /research page loads and research-submit exists, but submitting a topic calls /api/search which 502s at the gateway (>60s). LoadingWorkflow will spin then error. Not tested end-to-end because backend fails via public URL.", "affected_selectors": ["research-submit", "loading-workflow", "topic-generate-*", "refresh-selection"]},
+      {"flow": "Mode 1 - Analyze URL", "issue": "The /analyze page loads and analyze-submit exists, but for any URL with substantial content the /api/analyze-url call 502s at the gateway. Only very small pages might succeed. Not fully verified end-to-end.", "affected_selectors": ["analyze-submit"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_forsides_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "URGENT: Reduce /api/search LLM latency to fit under 60s. Options: (a) send at most 10-12 candidates to Claude instead of 30, (b) simplify the JSON scoring schema returned per topic, (c) use a faster model (e.g. Claude Haiku) for the dedup/score stage and keep Sonnet only for /api/analyze-topic, (d) split into two Claude calls (first dedup/filter, then score top-N).",
+    "URGENT: Reduce /api/analyze-url LLM latency. Cap scraped text at ~3500-4000 chars (currently 7000) and/or trim the JSON schema. Consider streaming or splitting analysis+caption into two calls to stay under 60s each.",
+    "Add a Python-side sort by score desc on the topics list returned by /api/search so ordering is guaranteed regardless of LLM output.",
+    "Improve scrape_url: rotate/enrich UA + add Referer, and return a friendlier 422 (\"Cette source bloque l'accès automatisé\") when the target site 403s. Optionally fall back to https://r.jina.ai/ or a headless render.",
+    "Consider raising the platform edge timeout for these endpoints if configurable, or exposing a websocket/SSE progress channel so the browser doesn't rely on a single 180s HTTP call."
+  ],
+  "critical_code_review_comments": [
+    "server.py mixes retrieval + scoring + heavy schema in one LLM call → single point of latency failure; refactor into staged calls.",
+    "scrape_url uses a fixed UA and no Referer; many French institutional sites will 403 it. Consider a small allow-list of scrapers or a hosted fetch fallback.",
+    "No Python-side ordering of /api/search topics; relies entirely on LLM to sort by score.",
+    "Global 180s axios timeout on frontend is misleading given ~60s Cloudflare edge timeout; the UX will not receive backend errors, only browser aborts on 502 HTML."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_forsides_api.py"
+  ],
+  "success_rate": {"backend": "60%", "frontend": "50%"},
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend server runs fine locally (localhost:8001). Public URL is https://editorial-hub-113.preview.emergentagent.com. Cloudflare edge timeout ~60s → any endpoint that takes longer returns 502 with an HTML Cloudflare error page. Working endpoints via public URL: GET /api/, /api/analyze-topic (~47s), /api/caption, /api/quality, /api/visual-image. Broken (times out): /api/search, /api/analyze-url on large pages. Frontend routes and testids all present. After main agent optimizes /api/search and /api/analyze-url to run under 60s, re-run backend/tests/test_forsides_api.py and then a Playwright end-to-end for Mode 2: type 'Publications EIOPA' → research-submit → wait ~50s → assert TopicCard[0..4] → click topic-generate-0 → assert Studio testids (score-panel, caption-textarea, visual-canvas).",
+  "rca of the issue": "Root cause: /api/search sends 30 Google News RSS candidates plus a large nested JSON schema to Claude Sonnet 4.6, producing a ~130s round-trip. The preview environment is fronted by Cloudflare with a ~60s gateway timeout (verified: 502 exactly at 60.2s). Frontend axios timeout of 180s is irrelevant because the 502 originates upstream. Reproduction: POST https://editorial-hub-113.preview.emergentagent.com/api/search {\"topic\":\"EIOPA Solvabilite\",\"max_results\":5} → HTTP 502 at ~60s. Same POST against http://localhost:8001/api/search → HTTP 200 at ~130s. Mitigation: reduce input size / prompt size / model to bring latency < 60s, or restructure into staged calls, or use a faster model for dedup/scoring."
+}

@@ -1,0 +1,79 @@
+{
+  "project_name": "FORSIDES News Studio",
+  "app_type": "hybrid_fullstack",
+  "editorial_archetype": "SWISS & HIGH-CONTRAST / EDITORIAL PRESS",
+  "theme_strategy": {
+    "default_mode": "light",
+    "vibe": "High-end Paris newsroom press, authoritative financial actuarial editorial platform",
+    "base_background": "bg-[#FAF8F5]",
+    "card_background": "bg-white",
+    "surface_borders": "border-slate-200/80",
+    "brand_accent": "#991B1B",
+    "brand_accent_dark": "#7F1D1D",
+    "text_primary": "#0F172A",
+    "text_secondary": "#475569"
+  },
+  "typography": {
+    "font_pairing_strategy": "Editorial Press Serif (Headings) + Clean Swiss Sans (Body) + Precision Tech Mono (Data/Badges)",
+    "heading_font": "Playfair Display, Georgia, serif",
+    "body_font": "Outfit, Work Sans, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "rules": [
+      "Headings (H1/H2) must use tight letter spacing (tracking-tight) with bold editorial serif weights.",
+      "Main H1 scale ceiling: text-4xl sm:text-5xl lg:text-5xl (never exceed text-6xl).",
+      "Overlines and tags must be uppercase, tiny (text-xs), and tracking-[0.2em].",
+      "Do NOT use Inter for main headings; preserve the financial press journal character."
+    ]
+  },
+  "colors": {
+    "brand_primary_crimson": "#991B1B",
+    "brand_deep_bordeaux": "#6B1111",
+    "brand_navy_slate": "#0F172A",
+    "surface_off_white": "#FAF8F5",
+    "surface_card_white": "#FFFFFF",
+    "badge_editorial_priority_90_100": "#991B1B",
+    "badge_very_strong_80_89": "#2563EB",
+    "badge_good_subject_70_79": "#059669",
+    "badge_medium_60_69": "#D97706",
+    "badge_discard_below_60": "#64748B",
+    "forbidden_colors": ["#7351B7", "#1B93A4"]
+  },
+  "spacing_and_layout": {
+    "containers": "Generous internal padding (p-6 to p-8) with crisp 1px borders.",
+    "stepper": "6-step editorial workflow indicator (Source -> Analyse -> Score -> Angle -> Caption -> Visual).",
+    "grid_modes": {
+      "mode_selection": "2-column bento hero grid with distinct primary actions for pasted URL vs broad topic research.",
+      "results_page": "2-column grid (Left: Editorial Score + Analysis + Editable Caption | Right: Interactive 4:5 LinkedIn Visual Preview & Controls)."
+    }
+  },
+  "forsides_visual_identity_rules": {
+    "top_banner": "Large bold 'NEWS' wordmark with a dark-red rectangle (#991B1B) behind the word 'NEWS'.",
+    "date_format": "MOIS 2026 (e.g. JUILLET 2026 / MARS 2026).",
+    "branding": "Discreet FORSIDES wordmark branding top-right.",
+    "visual_aspect_ratio": "1200x1500 (4:5 aspect ratio) tailored for LinkedIn feeds.",
+    "versions": {
+      "version_a": "Editorial News with IA illustration background & dark-red news banner",
+      "version_b": "Data & Insight Infographic canvas with high-impact key numbers and structured bullet points"
+    }
+  },
+  "image_urls": {
+    "newspaper_finance_1": "https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwyfHxlZGl0b3JpYWwlMjBuZXdzcm9vbSUyMGpvdXJuYWxpc3QlMjB3b3JraW5nJTIwZmluYW5jaWFsJTIwaW5zdXJhbmNlJTIwZGF0YXxlbnwwfHx8fDE3ODg1MjY5Njl8MA&ixlib=rb-4.1.0&q=85",
+    "newspaper_finance_2": "https://images.unsplash.com/photo-1618044733300-9472054094ee?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxlZGl0b3JpYWwlMjBuZXdzcm9vbSUyMGpvdXJuYWxpc3QlMjB3b3JraW5nJTIwZmluYW5jaWFsJTIwaW5zdXJhbmNlJTIwZGF0YXxlbnwwfHx8fDE3ODg1MjY5Njl8MA&ixlib=rb-4.1.0&q=85",
+    "journalist_laptop": "https://images.unsplash.com/photo-1689421755395-c18b8cd24db3?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwzfHxlZGl0b3JpYWwlMjBuZXdzcm9vbSUyMGpvdXJuYWxpc3QlMjB3b3JraW5nJTIwZmluYW5jaWFsJTIwaW5zdXJhbmNlJTIwZGF0YXxlbnwwfHx8fDE3ODg1MjY5Njl8MA&ixlib=rb-4.1.0&q=85"
+  },
+  "testing_and_accessibility": {
+    "data_testid_requirement": "All interactive elements, buttons, tabs, input fields, badges, score gauges, caption area, export buttons, and visual edit controls MUST include kebab-case data-testid attributes.",
+    "contrast_standards": "High contrast text over dark red banners (pure white text with slight drop shadow when over images).",
+    "focus_states": "ring-2 ring-red-800 ring-offset-2"
+  },
+  "instructions_to_main_agent": [
+    "Ensure the application strictly follows the 6-step editorial workflow.",
+    "Mode 1 must scrape/extract source, date, topic, sector, key figures, regulatory changes, and consequences.",
+    "Mode 2 must simulate research across 15-30 French actuarial/insurance sources (EIOPA, ACPR, DREES, France Assureurs, Solvabilité II, IFRS 17) and support 'Refresh selection'.",
+    "Editorial score panel must calculate scores out of 100 with the 7 weighted criteria and classification bands.",
+    "Caption editor must offer Court, Standard, Analytique, and Décryptage approfondi modes with quick action buttons.",
+    "Canvas rendering for LinkedIn 4:5 visual must render natively on client side HTML5 canvas / SVG export to high-res PNG.",
+    "Include automatic Content Quality Score /100 with improvement suggestions if <75.",
+    "Export functionalities: Copy caption, Download PNG visual, Export full package."
+  ]
+}

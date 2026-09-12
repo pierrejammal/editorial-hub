@@ -1,0 +1,119 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --forsides-red: #991b1b;
+  --forsides-bordeaux: #6b1111;
+  --forsides-ink: #0f172a;
+  --forsides-slate: #475569;
+  --forsides-cream: #faf8f5;
+}
+
+body {
+  margin: 0;
+  font-family: "Outfit", "Work Sans", sans-serif;
+  background: var(--forsides-cream);
+  color: var(--forsides-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-serif-editorial {
+  font-family: "Playfair Display", Georgia, serif;
+}
+.font-mono-data {
+  font-family: "JetBrains Mono", monospace;
+}
+
+::selection {
+  background: var(--forsides-red);
+  color: #fff;
+}
+
+/* Thin grain / paper feel */
+.paper-grain {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.03) 1px, transparent 1px);
+  background-size: 4px 4px;
+}
+
+.news-flag {
+  background: var(--forsides-red);
+  color: #fff;
+  font-family: "Outfit", sans-serif;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 0.9;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise {
+  animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #efeae4 0%, #f7f3ee 50%, #efeae4 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.hover-lift {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.35s ease, border-color 0.35s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+}
+
+@layer base {
+  :root {
+    --background: 40 33% 97%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 0 70% 35%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 20% 92%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 40 20% 92%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 0 70% 35%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 0 70% 35%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer base {
+  [data-debug-wrapper="true"] {
+    display: contents !important;
+  }
+}

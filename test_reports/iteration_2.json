@@ -1,0 +1,39 @@
+{
+  "summary": "Re-tested FORSIDES News Studio after async-job refactor. Backend: 11/11 pytest tests PASSED via public URL (job flows for search~112s, analyze-topic~40s, analyze-url~35s, compose~10s; direct caption/quality/visual-image). Frontend: Mode 3 (/compose) end-to-end works — text → live canvas → 'Optimiser le visuel avec l'IA' job succeeded (~30s) → title reformulated ('Solvabilité II : l'EIOPA relève l'exigence de capital des assureurs vie à 8,5%'), format A/B toggle works, data view populates key_figure_value/important_date, download buttons present. Mode 2 (/research) end-to-end works — search job returned 6 topic cards in ~129s, topic-generate-0 → analyze-topic job → /studio populated (score-panel 92/100, all subscores, caption-textarea, visual-canvas with FORSIDES NEWS template, all action buttons). Mode 1 (/analyze-url) verified via backend job test (EIOPA URL). Async job + polling pattern fully resolves the previous 60s Cloudflare timeouts. Ready for release.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/jobs/search", "issue": "Job takes ~110-130s to complete (well under polling window). No functional issue, but consider caching Google News RSS results or parallelizing the LLM scoring stage to reduce latency."},
+      {"endpoint": "/api/jobs/analyze-url", "issue": "Many French institutional sites still 403 the scraper; jina.ai fallback helps but occasional error results. Job returns friendly error, as designed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "VisualPreview (Data view)", "issue": "In Mode 3 Data view (format 'B'), the 'Date de publication : 15 janvier 2026' text visibly overlaps the FORSIDES logo circle in the bottom-right of the canvas. Consider constraining the text box width or moving the logo/date placement.", "selector": "[data-testid=\"visual-canvas\"]", "priority": "LOW"},
+      {"component": "VisualPreview banner month label", "issue": "The banner shows 'SEPTEMBRE 2026' rather than the important_date month (e.g. JANVIER 2026 for a Jan 15 2026 date). Verify this label derives from meta.date/important_date, not a hard-coded/current-month fallback.", "selector": "[data-testid=\"visual-canvas\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_forsides_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Fix banner month/year label in VisualPreview to reflect important_date instead of a static/current month.",
+    "(Optional) Prevent text/logo overlap in Data-view visual (bottom-right corner)."
+  ],
+  "critical_code_review_comments": [
+    "Async job + polling pattern is a solid fix for the Cloudflare 60s edge timeout; job state persisted in MongoDB with clean status/result/detail fields.",
+    "server.py length is fine, but do_search sends 14 candidates to Claude; a two-stage (Haiku dedup → Sonnet score top-6) split would cut latency further.",
+    "runJob polling helper in lib/api.js uses 3s interval and 240s cap — matches backend timings well.",
+    "Frontend correctly wires all Mode 1/2/3 flows through the job pattern; no direct legacy calls remain."
+  ],
+  "updated_files": ["/app/backend/tests/test_forsides_api.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Async job pattern verified end-to-end. Test file /app/backend/tests/test_forsides_api.py uses run_job() helper and covers /api/jobs/{search,analyze-topic,analyze-url,compose} + direct /api/caption /api/quality /api/visual-image. Full pytest run takes ~6.5 minutes because search+analyze-topic dominate. Frontend Playwright: Mode 3 is the fastest (~30s job). Mode 2 topic listing takes ~130s so budget 180s polling. Studio testids confirmed: score-panel, score-total, caption-textarea, visual-canvas, caption-regenerate/shorten/quality, visual-download, visual-format-A/B. Only cosmetic issues remain (banner month, Data-view text/logo overlap).",
+  "rca of the issue": "N/A — previous 60s Cloudflare edge-timeout issue is fully resolved by the async job + polling architecture (search job completes ~112s and is polled by the browser, not held open in a single HTTP request)."
+}
