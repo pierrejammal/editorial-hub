@@ -38,6 +38,12 @@ Application web premium transformant une actualité/sujet en post LinkedIn prêt
 - Latence veille : étage triage/dédup/scoring sur Claude Haiku 4.5 (`FAST_MODEL`) avec sortie JSON allégée (plus de sous-scores dans la recherche) ; Sonnet 4.6 reste pour l'analyse complète du sujet choisi. Mesuré : 46 s (vs ~110 s).
 - Gemini `/api/visual-image` vérifié de bout en bout (JPEG ~1 Mo en ~11 s).
 
+## v4 (juin 2026) — visuel sans photo IA
+- Retour utilisateur : pas de photo IA. Le visuel repose désormais uniquement sur le contenu : titre, « L'essentiel » (résumé de la source), 3 points d'analyse (Ce qui change / Pourquoi c'est important / À retenir), pied « SOURCE : média · titre du lien ». Jamais vide : repli sur data_points, puis phrases de la caption ; typographie auto-agrandie quand le contenu est court (`fitScale`).
+- Format A = « Analyse », Format B = « Data » (chiffre clé + échéance + résumé | points ; sans data → résumé | citation du titre source).
+- Boutons « Image IA » / « Importer image » supprimés (endpoint /api/visual-image conservé mais inutilisé). Mockup home aligné (lignes de texte au lieu d'un bloc photo).
+- Backend : `meta.source_title` persisté (analyze-url : titre scrapé ; analyze-topic : titre + summary) ; compose renvoie désormais fact/what_changes/why_important + source/source_title.
+
 ## Backlog / next
 - P1 : publication LinkedIn réelle (OAuth + API) — actuellement SIMULÉE.
 - P2 : logo DREES officiel (fichier à fournir).

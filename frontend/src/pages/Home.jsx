@@ -42,8 +42,22 @@ const Home = () => {
                 <div className="h-3 w-5/6 rounded-sm bg-forsides-bordeaux/85" />
                 <div className="h-3 w-2/3 rounded-sm bg-forsides-bordeaux/85" />
               </div>
-              <div className="mt-5 h-[42%] w-full overflow-hidden rounded-md bg-[#e0cfc8]">
-                <div className="h-full w-full bg-gradient-to-br from-[#d8c2ba] to-[#b98d80]" />
+              <div className="mt-4 h-[3px] w-10 bg-forsides-red" />
+              <div className="mt-3 space-y-1">
+                <div className="h-1.5 w-full rounded-sm bg-forsides-ink/40" />
+                <div className="h-1.5 w-11/12 rounded-sm bg-forsides-ink/40" />
+                <div className="h-1.5 w-4/5 rounded-sm bg-forsides-ink/40" />
+              </div>
+              <div className="mt-4 space-y-2.5">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className={`mt-0.5 h-2 w-2 shrink-0 ${i % 2 === 0 ? "bg-forsides-red" : "bg-[#E7A390]"}`} />
+                    <div className="flex-1 space-y-1">
+                      <div className="h-1 w-1/3 rounded-sm bg-forsides-ink/30" />
+                      <div className={`h-1.5 rounded-sm bg-forsides-bordeaux/70 ${i === 1 ? "w-3/4" : "w-11/12"}`} />
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <span className="h-px flex-1 bg-forsides-bordeaux/50" />

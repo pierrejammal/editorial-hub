@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { genVisual } from "@/lib/api";
 import { useStudio } from "@/context/StudioContext";
 import {
   renderVisual, loadImage, sourceLogoSrc, VW, VH, FONT_SET,
 } from "@/lib/visualRender";
 import {
-  Download, ImagePlus, LayoutTemplate, Loader2, Type, Upload, FileDown, Columns2, Check,
+  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check,
 } from "lucide-react";
 
 const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, label }) => {
@@ -44,15 +43,11 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
   const v = post.visual || {};
   const [version, setVersion] = useState(v.recommended_format === "B" ? "B" : "A");
   const [title, setTitle] = useState(v.title_short || post.editorial?.fact || post.meta?.topic || "");
-  const [imgSrc, setImgSrc] = useState(v.image || post.meta?.image_url || "");
   const [uploadedLogoSrc, setUploadedLogoSrc] = useState(null);
   const [logoImg, setLogoImg] = useState(null);
-  const [mainImg, setMainImg] = useState(null);
   const [sourceLogo, setSourceLogo] = useState(null);
   const [fontsReady, setFontsReady] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [showConcepts, setShowConcepts] = useState(false);
-  const imgInput = useRef(null);
   const logoInput = useRef(null);
 
   useEffect(() => setTitle(v.title_short || post.editorial?.fact || post.meta?.topic || ""), [v.title_short]);
@@ -67,8 +62,6 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
     return () => { cancelled = true; clearTimeout(t); };
   }, []);
 
-  useEffect(() => { loadImage(imgSrc).then(setMainImg); }, [imgSrc]);
-
   // auto source logo from institution library (unless user uploaded one)
   useEffect(() => {
     if (uploadedLogoSrc) { loadImage(uploadedLogoSrc).then(setSourceLogo); return; }
@@ -78,7 +71,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
   }, [post.meta?.source, uploadedLogoSrc]);
 
   const localPost = { ...post, visual: { ...v, title_short: title } };
-  const images = { logoImg, sourceLogoImg: sourceLogo, mainImg };
+  const images = { logoImg, sourceLogoImg: sourceLogo };
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -93,7 +86,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
       } catch (e) { /* tainted */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, title, mainImg, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta]);
+  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption]);
 
   const download = () => {
     try {
@@ -102,7 +95,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
       a.href = url; a.download = "forsides-news.png"; a.click();
       toast.success("Visuel téléchargé (1200×1500)");
     } catch (e) {
-      toast.error("Image externe protégée. Importez l'image ou générez-la par IA pour exporter.");
+      toast.error("Export impossible : le logo importé est protégé. Réimportez-le depuis votre ordinateur.");
     }
   };
 
@@ -114,30 +107,11 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
     toast.success("Post complet exporté (visuel + texte)");
   };
 
-  const generate = async () => {
-    setBusy(true);
-    try {
-      const { image } = await genVisual({
-        title,
-        sector: post.meta?.sector || "",
-        topic: post.meta?.topic || post.editorial?.fact || title,
-        angle: post.editorial?.angle || "",
-      });
-      setImgSrc(image); updateVisual({ image }); setVersion("A");
-      toast.success("Image générée");
-    } catch (e) {
-      toast.error(e.response?.data?.detail || "Échec de génération du visuel");
-    } finally { setBusy(false); }
-  };
-
-  const onFile = (e, isMain) => {
+  const onLogoFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      if (isMain) { setImgSrc(reader.result); updateVisual({ image: reader.result }); }
-      else setUploadedLogoSrc(reader.result);
-    };
+    reader.onload = () => setUploadedLogoSrc(reader.result);
     reader.readAsDataURL(file);
     e.target.value = "";
   };
@@ -166,7 +140,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
                   version === f ? "bg-forsides-red text-white" : "text-forsides-slate"
                 }`}
               >
-                {f === "A" ? "Image" : "Data"}
+                {f === "A" ? "Analyse" : "Data"}
               </button>
             ))}
           </div>
@@ -180,7 +154,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
           </p>
           <div className="grid grid-cols-2 gap-3">
             <ConceptThumb post={localPost} version="A" images={images} fontsReady={fontsReady}
-              active={version === "A"} onChoose={() => chooseConcept("A")} label="Concept 1 · Actualité" />
+              active={version === "A"} onChoose={() => chooseConcept("A")} label="Concept 1 · Analyse" />
             <ConceptThumb post={localPost} version="B" images={images} fontsReady={fontsReady}
               active={version === "B"} onChoose={() => chooseConcept("B")} label="Concept 2 · Data / Insight" />
           </div>
@@ -206,14 +180,6 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button data-testid="visual-generate-image" disabled={busy} onClick={generate}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />} Image IA
-          </button>
-          <button data-testid="visual-upload-image" onClick={() => imgInput.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
-            <Upload className="h-4 w-4" /> Importer image
-          </button>
           <button data-testid="visual-upload-logo" onClick={() => logoInput.current?.click()}
             className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
             <Upload className="h-4 w-4" /> Logo source
@@ -237,8 +203,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
           )}
         </div>
 
-        <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => onFile(e, true)} />
-        <input ref={logoInput} type="file" accept="image/*" hidden onChange={(e) => onFile(e, false)} />
+        <input ref={logoInput} type="file" accept="image/*" hidden onChange={onLogoFile} />
       </div>
     </section>
   );

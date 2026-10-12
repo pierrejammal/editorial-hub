@@ -283,6 +283,7 @@ CONTENU:
     data["meta"].update({
         "source": scraped["site_name"],
         "source_url": req.url,
+        "source_title": scraped["title"] or "",
         "publication_date": scraped["published"] or "",
         "date_label": french_date_label(pub_dt),
         "image_url": scraped.get("image") or "",
@@ -358,6 +359,8 @@ Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('s
     data["meta"].update({
         "source": t.get("source", ""),
         "source_url": t.get("source_url", ""),
+        "source_title": t.get("title", ""),
+        "summary": t.get("summary", ""),
         "publication_date": t.get("date", ""),
         "date_label": t.get("date_label") or french_date_label(None),
         "image_url": "",
@@ -377,8 +380,8 @@ async def do_compose(req: ComposeReq) -> Dict[str, Any]:
 À partir de CE TEXTE uniquement (ne rien inventer), prépare les éléments du visuel LinkedIn FORSIDES.
 Renvoie STRICTEMENT ce JSON:
 {{
-  "meta": {{ "topic": "sujet en quelques mots", "sector": "secteur" }},
-  "editorial": {{ "insight": "phrase insight tirée du texte ou ''", "angle": "angle dominant du texte" }},
+  "meta": {{ "topic": "sujet en quelques mots", "sector": "secteur", "source": "institution ou média cité dans le texte ou ''", "source_title": "titre de l'étude/rapport/article cité ou ''" }},
+  "editorial": {{ "fact": "résumé fidèle du texte en 2 phrases", "what_changes": "ce qui change, 1 phrase ou ''", "why_important": "pourquoi c'est important, 1 phrase ou ''", "insight": "phrase insight tirée du texte ou ''", "angle": "angle dominant du texte" }},
   "visual": {{
     "recommended_format": "A ou B",
     "title_short": "titre éditorial court et fort tiré du texte (10-16 mots), reformulé, sans guillemets",

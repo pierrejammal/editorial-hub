@@ -51,7 +51,7 @@ export const sourceLogoSrc = (source) => {
   return id && id.img ? id.img : null;
 };
 
-function drawParagraph(ctx, text, x, y, maxW, lineH, justify) {
+function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, draw = true) {
   const words = (text || "").split(/\s+/).filter(Boolean);
   const lines = [];
   let line = [];
@@ -63,6 +63,13 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify) {
     } else line.push(w);
   }
   if (line.length) lines.push(line);
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    const last = lines[maxLines - 1];
+    while (last.length > 1 && ctx.measureText(last.join(" ") + "…").width > maxW) last.pop();
+    last[last.length - 1] = last[last.length - 1].replace(/[,;:.]$/, "") + "…";
+  }
+  if (!draw) return y + lines.length * lineH;
   let cy = y;
   lines.forEach((ln, idx) => {
     const isLast = idx === lines.length - 1;
@@ -96,8 +103,8 @@ function drawEmblem(ctx, id, rightX, topY) {
     ctx.fillText(id.acronym, rightX, topY + 30);
     ctx.font = "500 17px Outfit";
     ctx.fillStyle = "#666";
-    drawParagraph(ctx, id.name, rightX - nameW, topY + 54, nameW, 22, false);
-    // realign for wrapped call (left anchored) -> redo right aligned simply:
+    ctx.textAlign = "left";
+    drawParagraph(ctx, id.name, rightX - nameW, topY + 54, nameW, 22, false, 2);
   } else {
     ctx.font = "600 22px Outfit";
     ctx.fillStyle = "#333";
@@ -106,10 +113,233 @@ function drawEmblem(ctx, id, rightX, topY) {
   ctx.textAlign = "left";
 }
 
-// opts: { post, version, images:{logoImg, sourceLogoImg, mainImg} }
+function drawLabel(ctx, text, x, y) {
+  ctx.fillStyle = "#8a6a62";
+  ctx.font = "600 18px Outfit";
+  const prev = ctx.letterSpacing;
+  ctx.letterSpacing = "3px";
+  ctx.fillText(text, x, y);
+  ctx.letterSpacing = prev || "0px";
+}
+
+function drawRule(ctx, y) {
+  ctx.fillStyle = BRICK;
+  ctx.fillRect(PAD, y, 90, 5);
+  ctx.fillStyle = DOT;
+  ctx.fillRect(PAD + 90, y + 1, VW - PAD * 2 - 90, 3);
+}
+
+const clean = (s) => (typeof s === "string" ? s.trim() : "");
+const firstSentences = (text, n) => {
+  const parts = clean(text).replace(/\s+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean);
+  return parts.slice(0, n).join(" ");
+};
+
+// Resolves what the visual says: résumé + 3 analysis points + source line. Never empty.
+export function resolveContent(post, title) {
+  const v = post.visual || {};
+  const ed = post.editorial || {};
+  const m = post.meta || {};
+  const t = clean(title);
+  const pick = (...cands) => cands.map(clean).find((c) => c && c !== t) || "";
+
+  const summary = pick(v.subtitle, ed.fact, m.summary, post.summary, firstSentences(post.caption, 2));
+
+  let points = [
+    { label: "Ce qui change", text: clean(ed.what_changes) },
+    { label: "Pourquoi c'est important", text: clean(ed.why_important) },
+    { label: "À retenir", text: clean(ed.insight) || clean(v.insight_line) },
+  ].filter((p) => p.text && p.text !== summary && p.text !== t);
+  if (!points.length) {
+    points = (v.data_points || []).map(clean).filter(Boolean).slice(0, 3)
+      .map((text, i) => ({ label: ["Point clé", "À noter", "À retenir"][i], text }));
+  }
+  if (!points.length && clean(v.insight_line) && clean(v.insight_line) !== summary) {
+    points = [{ label: "À retenir", text: clean(v.insight_line) }];
+  }
+  if (!points.length && summary && summary === firstSentences(post.caption, 2)) {
+    const rest = clean(post.caption).replace(/\s+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean).slice(2, 5);
+    points = rest.filter((x) => x.length > 25).map((text, i) => ({ label: ["À noter", "Et aussi", "À retenir"][i], text }));
+  }
+
+  const source = clean(m.source);
+  const srcTitle = pick(m.source_title, post.sources?.[0]?.title, m.topic);
+  return { summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: clean(m.date_label) };
+}
+
+// Density-aware scale: sparse content gets bigger type so the canvas never looks empty.
+function fitScale(measure, avail) {
+  let s = 1;
+  for (let i = 0; i < 6; i++) {
+    const used = measure(s);
+    if (used >= avail * 0.78 || s >= 1.5) break;
+    s = Math.min(1.5, s * Math.min(1.18, Math.sqrt((avail * 0.85) / Math.max(used, 1))));
+  }
+  return s;
+}
+
+function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
+  ctx.fillStyle = BORDEAUX;
+  ctx.font = "800 58px Outfit";
+  ctx.textAlign = "left";
+  const titleTop = Math.max(headerBottom + 110, 310);
+  const titleBottom = drawParagraph(ctx, title, PAD, titleTop, VW - PAD * 2, 70, true, 4);
+  drawRule(ctx, titleBottom + 20);
+
+  const maxW = VW - PAD * 2;
+  const points = content.points.slice(0, 3);
+  const top = titleBottom + 80;
+  const bottom = footerTop - 30;
+  const blocks = (content.summary ? 1 : 0) + points.length;
+
+  const measure = (s) => {
+    let h = 0;
+    if (content.summary) {
+      ctx.font = `400 ${Math.round(31 * s)}px Outfit`;
+      h += 44 * s + drawParagraph(ctx, content.summary, PAD, 0, maxW, 44 * s, false, 6, false);
+    }
+    ctx.font = `500 ${Math.round(30 * s)}px Outfit`;
+    points.forEach((p) => { h += 52 * s + drawParagraph(ctx, p.text, PAD + 40, 0, maxW - 40, 40 * s, false, 4, false); });
+    return h + Math.max(0, blocks - 1) * 40;
+  };
+  const s = fitScale(measure, bottom - top);
+  const used = measure(s) - Math.max(0, blocks - 1) * 40;
+  const gap = blocks > 1 ? Math.min(120 * s, Math.max(36, (bottom - top - used) / (blocks - 1))) : 0;
+
+  let y = top;
+  if (content.summary) {
+    drawLabel(ctx, "L'ESSENTIEL", PAD, y);
+    ctx.fillStyle = INK;
+    ctx.font = `400 ${Math.round(31 * s)}px Outfit`;
+    y = drawParagraph(ctx, content.summary, PAD, y + 44 * s, maxW, 44 * s, true, 6) + gap;
+  }
+  points.forEach((p, i) => {
+    if (y > bottom - 60) return;
+    ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
+    ctx.fillRect(PAD, y - 6, 14, 14);
+    drawLabel(ctx, p.label.toUpperCase(), PAD + 40, y);
+    ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
+    ctx.font = `500 ${Math.round(30 * s)}px Outfit`;
+    y = drawParagraph(ctx, p.text, PAD + 40, y + 46 * s, maxW - 40, 40 * s, false, 4) + gap;
+  });
+}
+
+function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
+  ctx.fillStyle = BORDEAUX;
+  ctx.font = "800 46px Outfit";
+  ctx.textAlign = "left";
+  const titleTop = Math.max(headerBottom + 90, 300);
+  const titleBottom = drawParagraph(ctx, title, PAD, titleTop, VW - PAD * 2, 56, true, 4);
+  drawRule(ctx, titleBottom + 18);
+
+  const colGap = 60;
+  const leftX = PAD;
+  const leftW = (VW - PAD * 2 - colGap) * 0.46;
+  const rightX = leftX + leftW + colGap;
+  const rightW = VW - PAD - rightX;
+  const top = titleBottom + 70;
+  const bottom = footerTop - 40;
+  const hasData = Boolean(v.key_figure_value || v.important_date);
+  const points = content.points.slice(0, 3);
+
+  // left column
+  let ly = top;
+  if (hasData) {
+    if (v.key_figure_value) {
+      ctx.fillStyle = BRICK;
+      ctx.font = "128px Anton";
+      ctx.fillText(String(v.key_figure_value), leftX, ly + 100);
+      ly += 118;
+      if (v.key_figure_label) {
+        ctx.fillStyle = INK;
+        ctx.font = "500 27px Outfit";
+        ly = drawParagraph(ctx, v.key_figure_label, leftX, ly + 20, leftW, 36, false, 3) + 40;
+      }
+    }
+    if (v.important_date) {
+      ctx.fillStyle = CORAL;
+      ctx.font = "84px Anton";
+      const dy = drawParagraph(ctx, String(v.important_date), leftX, ly + 60, leftW, 78, false, 2);
+      ctx.fillStyle = INK;
+      ctx.font = "500 26px Outfit";
+      ctx.fillText("échéance à retenir", leftX, dy + 10);
+      ly = dy + 50;
+    }
+    const room = Math.floor((bottom - ly - 40) / 36);
+    if (content.summary && room >= 3) {
+      ctx.fillStyle = INK;
+      ctx.font = "400 26px Outfit";
+      drawParagraph(ctx, content.summary, leftX, ly + 40, leftW, 36, false, room);
+    }
+  } else {
+    const text = content.summary || title;
+    const measure = (s) => { ctx.font = `400 ${Math.round(29 * s)}px Outfit`; return 56 * s + drawParagraph(ctx, text, leftX, 0, leftW, 40 * s, false, 12, false); };
+    const s = fitScale(measure, bottom - top);
+    drawLabel(ctx, "L'ESSENTIEL", leftX, ly + 10);
+    ctx.fillStyle = INK;
+    ctx.font = `400 ${Math.round(29 * s)}px Outfit`;
+    drawParagraph(ctx, text, leftX, ly + 56 * s, leftW, 40 * s, false, Math.floor((bottom - ly - 56 * s) / (40 * s)));
+  }
+
+  // right column: analysis points, else the source headline as a pull-quote
+  ctx.textAlign = "right";
+  const rx = rightX + rightW;
+  if (points.length) {
+    const measure = (s) => { ctx.font = `600 ${Math.round(34 * s)}px Outfit`; return points.reduce((h, p) => h + 56 * s + drawParagraph(ctx, p.text, rx, 0, rightW, 44 * s, false, 4, false), 0) + (points.length - 1) * 42; };
+    const s = fitScale(measure, bottom - top);
+    let ry = top;
+    points.forEach((p, i) => {
+      if (ry > bottom - 60) return;
+      drawLabel(ctx, p.label.toUpperCase(), rx, ry + 10);
+      ctx.fillStyle = i % 2 === 0 ? BORDEAUX : BRICK;
+      ctx.font = `600 ${Math.round(34 * s)}px Outfit`;
+      ry = drawParagraph(ctx, p.text, rx, ry + 56 * s, rightW, 44 * s, false, 4) + 42;
+    });
+  } else if (content.sourceTitle || content.source) {
+    drawLabel(ctx, "À LA SOURCE", rx, top + 10);
+    ctx.fillStyle = BRICK;
+    ctx.font = "120px Anton";
+    ctx.fillText("“", rx, top + 150);
+    ctx.fillStyle = BORDEAUX;
+    ctx.font = "italic 600 38px Outfit";
+    const qy = drawParagraph(ctx, content.sourceTitle || content.source, rx, top + 200, rightW, 50, false, 6);
+    if (content.source && content.sourceTitle) {
+      ctx.fillStyle = "#4a3a36";
+      ctx.font = "500 24px Outfit";
+      ctx.fillText(`${content.source}${content.date ? " · " + content.date : ""}`, rx, qy + 16);
+    }
+  }
+  ctx.textAlign = "left";
+}
+
+function drawSourceFooter(ctx, content, top) {
+  if (!content.source && !content.sourceTitle) return;
+  ctx.fillStyle = DOT;
+  ctx.fillRect(PAD, top, VW - PAD * 2, 2);
+  ctx.textAlign = "left";
+  drawLabel(ctx, "SOURCE", PAD, top + 36);
+  const labelW = ctx.measureText("SOURCE").width + 40;
+  let x = PAD + labelW;
+  if (content.source) {
+    ctx.fillStyle = BORDEAUX;
+    ctx.font = "700 24px Outfit";
+    ctx.fillText(content.source, x, top + 36);
+    x += ctx.measureText(content.source).width + 18;
+  }
+  if (content.sourceTitle) {
+    ctx.fillStyle = "#4a3a36";
+    ctx.font = "italic 400 22px Outfit";
+    const rest = VW - PAD - x;
+    const fits = ctx.measureText(content.sourceTitle).width <= rest;
+    if (fits && content.source) ctx.fillText(content.sourceTitle, x, top + 36);
+    else drawParagraph(ctx, content.sourceTitle, PAD + labelW, top + (content.source ? 70 : 36), VW - PAD * 2 - labelW, 30, false, 2);
+  }
+}
+
+// opts: { post, version, images:{logoImg, sourceLogoImg} }
 export function renderVisual(ctx, { post, version, images }) {
   const v = post.visual || {};
-  const { logoImg, sourceLogoImg, mainImg } = images || {};
+  const { logoImg, sourceLogoImg } = images || {};
   const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
 
   ctx.fillStyle = BLUSH;
@@ -169,113 +399,13 @@ export function renderVisual(ctx, { post, version, images }) {
   }
 
   const headerBottom = bannerBottom + 40;
+  const content = resolveContent(post, title);
+  const footerTop = VH - 200;
 
-  if (version === "B") {
-    ctx.fillStyle = BORDEAUX;
-    ctx.font = "800 46px Outfit";
-    ctx.textAlign = "left";
-    const titleTop = Math.max(headerBottom + 90, 300);
-    const titleBottom = drawParagraph(ctx, title, PAD, titleTop, VW - PAD * 2, 56, true);
+  if (version === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
+  else renderAnalysis(ctx, { title, content, headerBottom, footerTop });
 
-    const colGap = 60;
-    const leftX = PAD;
-    const leftW = (VW - PAD * 2 - colGap) * 0.46;
-    const rightX = leftX + leftW + colGap;
-    const rightW = VW - PAD - rightX;
-    let ly = titleBottom + 70;
-
-    if (v.key_figure_value) {
-      ctx.fillStyle = BRICK;
-      ctx.font = "128px Anton";
-      ctx.fillText(String(v.key_figure_value), leftX, ly + 100);
-      ly += 118;
-      if (v.key_figure_label) {
-        ctx.fillStyle = INK;
-        ctx.font = "500 27px Outfit";
-        ly = drawParagraph(ctx, v.key_figure_label, leftX, ly + 20, leftW, 36, false) + 40;
-      }
-    }
-    if (v.important_date) {
-      ctx.fillStyle = CORAL;
-      ctx.font = "84px Anton";
-      const dy = drawParagraph(ctx, String(v.important_date), leftX, ly + 60, leftW, 78, false);
-      ctx.fillStyle = INK;
-      ctx.font = "500 26px Outfit";
-      ctx.fillText("échéance à retenir", leftX, dy + 10);
-    }
-
-    const points = (v.data_points || []).slice(0, 2);
-    let ry = titleBottom + 90;
-    points.forEach((p, i) => {
-      if (ry > VH - 470) return;
-      ctx.fillStyle = i % 2 === 0 ? CORAL : BORDEAUX;
-      ctx.font = "54px Anton";
-      ctx.textAlign = "right";
-      ry = drawParagraph(ctx, p, rightX + rightW, ry + 48, rightW, 56, false) + 44;
-      ctx.textAlign = "left";
-    });
-
-    // decorations
-    ctx.fillStyle = DOT;
-    for (let r = 0; r < 4; r++)
-      for (let c = 0; c < 6; c++) {
-        ctx.beginPath();
-        ctx.arc(PAD + c * 26, VH - 320 + r * 26, 6, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    ctx.save();
-    ctx.fillStyle = BRICK;
-    ctx.beginPath();
-    ctx.arc(VW - 118, VH - 258, 88, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = BLUSH;
-    ctx.lineWidth = 12;
-    ctx.beginPath();
-    ctx.moveTo(VW - 118, VH - 258);
-    ctx.lineTo(VW - 22, VH - 258);
-    ctx.stroke();
-    ctx.restore();
-  } else {
-    ctx.fillStyle = BORDEAUX;
-    ctx.font = "800 58px Outfit";
-    ctx.textAlign = "left";
-    const titleTop = Math.max(headerBottom + 120, 320);
-    const titleBottom = drawParagraph(ctx, title, PAD, titleTop, VW - PAD * 2, 70, true);
-
-    const imgTop = titleBottom + 30;
-    const imgBottom = VH - 168;
-    const ih = imgBottom - imgTop;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, imgTop, VW, ih);
-    ctx.clip();
-    if (mainImg) {
-      const ar = mainImg.width / mainImg.height;
-      const tar = VW / ih;
-      let dw, dh, dx, dy;
-      if (ar > tar) {
-        dh = ih;
-        dw = ih * ar;
-        dx = (VW - dw) / 2;
-        dy = imgTop;
-      } else {
-        dw = VW;
-        dh = VW / ar;
-        dx = 0;
-        dy = imgTop - (dh - ih) / 2;
-      }
-      ctx.drawImage(mainImg, dx, dy, dw, dh);
-    } else {
-      ctx.fillStyle = "#ecd9d3";
-      ctx.fillRect(0, imgTop, VW, ih);
-      ctx.fillStyle = "#a9776c";
-      ctx.font = "500 26px Outfit";
-      ctx.textAlign = "center";
-      ctx.fillText("Ajoutez ou générez une image →", VW / 2, imgTop + ih / 2);
-      ctx.textAlign = "left";
-    }
-    ctx.restore();
-  }
+  drawSourceFooter(ctx, content, footerTop);
 
   // signature
   const y = VH - 78;
