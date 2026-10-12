@@ -67,18 +67,21 @@ def parse_json(raw: str) -> Dict[str, Any]:
     return json.loads(txt)
 
 
-async def llm_text(system: str, prompt: str) -> str:
+async def llm_text(system: str, prompt: str, model: str = "claude-sonnet-4-6") -> str:
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=str(uuid.uuid4()),
         system_message=system,
-    ).with_model("anthropic", "claude-sonnet-4-6")
+    ).with_model("anthropic", model)
     resp = await chat.send_message(UserMessage(text=prompt))
     return resp if isinstance(resp, str) else str(resp)
 
 
-async def llm_json(system: str, prompt: str) -> Dict[str, Any]:
-    raw = await llm_text(system, prompt)
+FAST_MODEL = "claude-haiku-4-5-20251001"
+
+
+async def llm_json(system: str, prompt: str, model: str = "claude-sonnet-4-6") -> Dict[str, Any]:
+    raw = await llm_text(system, prompt, model)
     try:
         return parse_json(raw)
     except Exception as e:
@@ -318,17 +321,15 @@ async def do_search(req: SearchReq) -> Dict[str, Any]:
 SOURCES CANDIDATES (JSON): {json.dumps(candidates, ensure_ascii=False)}
 SUJETS DÉJÀ PROPOSÉS À EXCLURE: {exclude_txt}
 
-Applique: DÉDUPLICATION (regroupe le même événement, garde la source primaire), FILTRAGE (élimine anciens/promotionnels/vagues/doublons/peu fiables), SCORING /100, puis TRIAGE des {n} meilleurs sujets (exclure ceux déjà proposés).
-Renvoie STRICTEMENT ce JSON:
+Applique: DÉDUPLICATION (regroupe le même événement, garde la source primaire), FILTRAGE (élimine anciens/promotionnels/vagues/doublons/peu fiables), SCORING /100 exigeant (pertinence assurance/actuariat, impact, actualité, fiabilité, potentiel LinkedIn), puis TRIAGE des {n} meilleurs sujets (exclure ceux déjà proposés).
+Renvoie STRICTEMENT ce JSON, champs courts (summary 2 phrases max, why_attention et main_insight 1 phrase chacun):
 {{"candidates_count": {len(candidates)}, "topics": [
   {{"title": "titre éditorial reformulé court", "source": "source primaire", "source_url": "lien fiable",
-    "date": "date lisible", "summary": "résumé 2 phrases", "why_attention": "", "main_insight": "", "sector": "",
-    "priority": "PRIORITÉ ÉDITORIALE | TRÈS FORT | BON SUJET", "score": int 0-100,
-    "scoring": {{"pertinence": {{"score": int}}, "impact": {{"score": int}}, "actualite": {{"score": int}}, "fiabilite": {{"score": int}}, "linkedin": {{"score": int}}, "vulgarisation": {{"score": int}}, "originalite": {{"score": int}}, "total": int}}
-  }}
+    "date": "date lisible", "summary": "", "why_attention": "", "main_insight": "", "sector": "",
+    "priority": "PRIORITÉ ÉDITORIALE | TRÈS FORT | BON SUJET", "score": int 0-100}}
 ]}}
 N'invente rien: appuie-toi sur les titres/sources/snippets fournis."""
-    data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    data = await llm_json(EDITORIAL_SYSTEM, prompt, FAST_MODEL)
     topics = data.get("topics", [])
     topics.sort(key=lambda t: t.get("score", 0), reverse=True)
     for t in topics:

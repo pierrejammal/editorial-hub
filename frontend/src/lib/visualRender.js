@@ -25,16 +25,16 @@ export const loadImage = (src) =>
 const LIB = [
   { k: ["acpr", "autorité de contrôle prudentiel"], img: "/logos/acpr.png" },
   { k: ["banque de france", "banque-france"], img: "/logos/banquefrance.png" },
-  { k: ["eiopa"], acronym: "EIOPA", name: "European Insurance & Occupational Pensions Authority" },
-  { k: ["cour des comptes", "ccomptes"], acronym: "C•C", name: "Cour des comptes" },
+  { k: ["eiopa"], img: "/logos/eiopa.png" },
+  { k: ["cour des comptes", "ccomptes"], img: "/logos/courdescomptes.png" },
   { k: ["drees"], acronym: "DREES", name: "Recherche, études, évaluation & statistiques" },
-  { k: ["france assureurs", "france assureur"], acronym: "FA", name: "France Assureurs" },
-  { k: ["insee"], acronym: "INSEE", name: "Institut national de la statistique" },
-  { k: ["ocde", "oecd"], acronym: "OCDE", name: "Organisation de coopération et de développement" },
-  { k: ["commission européenne", "ec.europa", "european commission"], acronym: "CE", name: "Commission européenne" },
-  { k: ["ifrs"], acronym: "IFRS", name: "IFRS Foundation" },
-  { k: ["sécurité sociale", "securite sociale"], acronym: "DSS", name: "Direction de la Sécurité sociale" },
-  { k: ["parlement", "assemblée", "sénat", "ministère", "ministere", "gouvernement"], acronym: "RF", name: "République française" },
+  { k: ["france assureurs", "france assureur"], img: "/logos/franceassureurs.png" },
+  { k: ["insee"], img: "/logos/insee.png" },
+  { k: ["ocde", "oecd"], img: "/logos/ocde.png" },
+  { k: ["commission européenne", "ec.europa", "european commission"], img: "/logos/commission.png" },
+  { k: ["ifrs"], img: "/logos/ifrs.png" },
+  { k: ["sécurité sociale", "securite sociale", "ameli", "urssaf"], img: "/logos/securitesociale.png" },
+  { k: ["parlement", "assemblée", "sénat", "ministère", "ministere", "gouvernement", "service-public", "legifrance", "légifrance"], img: "/logos/republique.png" },
 ];
 
 export const sourceIdentity = (source) => {
@@ -155,9 +155,14 @@ export function renderVisual(ctx, { post, version, images }) {
 
   // source (uploaded logo > library logo > emblem)
   if (sourceLogoImg) {
-    const sh = 58;
-    const sw = Math.min((sourceLogoImg.width / sourceLogoImg.height) * sh, 250);
-    ctx.drawImage(sourceLogoImg, VW - PAD - sw, logoBottom + 20, sw, sh);
+    const ar = sourceLogoImg.width / sourceLogoImg.height;
+    let sh = 64;
+    let sw = ar * sh;
+    if (sw > 260) {
+      sw = 260;
+      sh = sw / ar;
+    }
+    ctx.drawImage(sourceLogoImg, VW - PAD - sw, logoBottom + 22, sw, sh);
   } else if (post.meta?.source) {
     const id = sourceIdentity(post.meta.source);
     if (id) drawEmblem(ctx, id, VW - PAD, logoBottom + 18);

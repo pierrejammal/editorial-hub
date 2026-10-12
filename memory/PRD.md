@@ -32,8 +32,13 @@ Application web premium transformant une actualité/sujet en post LinkedIn prêt
 - **2 concepts** : aperçu côte à côte Version A (Actualité/image) et Version B (Data/Insight) avant génération, sélection en un clic.
 - **Logos institutionnels auto** : ACPR & Banque de France (vrais logos), EIOPA/Cour des comptes/DREES/France Assureurs/INSEE/OCDE/Commission européenne (emblèmes typographiques on-brand) affichés automatiquement selon la source ; upload manuel toujours possible.
 
+## v3 (juin 2026)
+- Logos officiels (PNG dans /public/logos, source Wikimedia/Wikipedia) : ACPR, Banque de France, EIOPA, Cour des comptes, France Assureurs, INSEE, OCDE, Commission européenne, IFRS Foundation, Sécurité sociale, République française (ministères/gouvernement/Sénat/Assemblée/Légifrance). DREES reste un emblème typographique (site bloque le scraping, pas de fichier sur Commons) → demander le fichier à l'utilisateur.
+- Rendu logo source : aspect ratio préservé (hauteur 64, largeur max 260).
+- Latence veille : étage triage/dédup/scoring sur Claude Haiku 4.5 (`FAST_MODEL`) avec sortie JSON allégée (plus de sous-scores dans la recherche) ; Sonnet 4.6 reste pour l'analyse complète du sujet choisi. Mesuré : 46 s (vs ~110 s).
+- Gemini `/api/visual-image` vérifié de bout en bout (JPEG ~1 Mo en ~11 s).
+
 ## Backlog / next
-- P2 : bibliothèque de logos institutionnels auto (EIOPA/ACPR/Cour des comptes) au lieu d'upload manuel.
-- P2 : réduire latence /api/jobs/search (étage dédup Haiku + scoring Sonnet).
-- P2 : proposer 2 concepts visuels avant génération quand plusieurs formats pertinents.
-- P2 : historique des posts générés (collection posts déjà persistée).
+- P1 : publication LinkedIn réelle (OAuth + API) — actuellement SIMULÉE.
+- P2 : logo DREES officiel (fichier à fournir).
+- P2 : retouches visuelles home/studio selon retours utilisateur.
