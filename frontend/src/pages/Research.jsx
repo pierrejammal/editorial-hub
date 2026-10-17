@@ -6,6 +6,7 @@ import { LoadingWorkflow } from "@/components/LoadingWorkflow";
 import { TopicCard } from "@/components/TopicCard";
 import { useStudio } from "@/context/StudioContext";
 import { searchTopics, analyzeTopic } from "@/lib/api";
+import { loadCompetitors, saveCompetitors, parseCompetitors, DEFAULT_COMPETITORS } from "@/lib/competitors";
 import { Search, RotateCcw, SlidersHorizontal } from "lucide-react";
 
 const EXAMPLES = [
@@ -26,6 +27,7 @@ const Research = () => {
   const [institutions, setInstitutions] = useState(research.params?.institutions || "");
   const [maxResults, setMaxResults] = useState(research.params?.max_results || 6);
   const [showAdv, setShowAdv] = useState(false);
+  const [competitors, setCompetitors] = useState(loadCompetitors);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(null); // topic being turned into a post
 
@@ -43,9 +45,10 @@ const Research = () => {
       max_results: Number(maxResults),
     };
     try {
-      const data = await searchTopics({ ...params, exclude });
+      const data = await searchTopics({ ...params, exclude, competitors: parseCompetitors(competitors) });
       setResearch({
         params,
+        excludedCompanies: data.excluded_companies || 0,
         topics: data.topics || [],
         excluded: [...exclude, ...(data.topics || []).map((t) => t.title)],
         candidatesCount: data.candidates_count || 0,
@@ -164,6 +167,32 @@ const Research = () => {
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red"
                 />
               </div>
+              <div className="sm:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
+                    Concurrents à exclure
+                  </label>
+                  <button
+                    type="button"
+                    data-testid="competitors-reset"
+                    onClick={() => { const d = DEFAULT_COMPETITORS.join(", "); setCompetitors(d); saveCompetitors(d); }}
+                    className="text-[11px] font-medium text-forsides-slate hover:text-forsides-red"
+                  >
+                    Liste par défaut
+                  </button>
+                </div>
+                <textarea
+                  data-testid="field-competitors"
+                  rows={3}
+                  value={competitors}
+                  onChange={(e) => { setCompetitors(e.target.value); saveCompetitors(e.target.value); }}
+                  className="mt-1 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Noms séparés par des virgules. Les actualités qui les citent, et toute actualité centrée sur une
+                  entreprise (résultats, rachat, nomination, lancement d'offre…), sont écartées automatiquement.
+                </p>
+              </div>
             </div>
           )}
 
@@ -186,6 +215,8 @@ const Research = () => {
                 </h2>
                 <p className="text-sm text-forsides-slate">
                   {topics.length} sujets retenus sur {research.candidatesCount} sources analysées
+                  {research.excludedCompanies > 0 &&
+                    ` · ${research.excludedCompanies} sujet${research.excludedCompanies > 1 ? "s" : ""} d'entreprises ou de concurrents écarté${research.excludedCompanies > 1 ? "s" : ""}`}
                 </p>
               </div>
               <button

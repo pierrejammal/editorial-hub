@@ -363,6 +363,7 @@ class SearchReq(BaseModel):
     institutions: str = ""
     max_results: int = 6
     exclude: List[str] = Field(default_factory=list)
+    competitors: Optional[List[str]] = None  # None → DEFAULT_COMPETITORS
 
 
 class AnalyzeTopicReq(BaseModel):
@@ -557,6 +558,26 @@ def match_candidate(topic: Dict[str, Any], candidates: List[Dict[str, Any]]) -> 
     return best if score >= 0.25 else None
 
 
+# ---------- Companies & competitors filter ----------
+# Actuarial / risk consulting firms competing with FORSIDES. Editable in the app
+# ("Préciser la recherche" → "Concurrents à exclure"); this is only the default list.
+DEFAULT_COMPETITORS = [
+    "Milliman", "Addactis", "Optimind", "Actuelia", "Galea", "Fixage", "Prim'Act", "Actuaris",
+    "SeaBird", "Sia Partners", "Mazars", "Forvis Mazars", "Deloitte", "KPMG", "EY", "Ernst & Young",
+    "PwC", "PricewaterhouseCoopers", "Accenture", "Aon", "WTW", "Willis Towers Watson", "Mercer",
+    "Nexialog", "Arengi", "Finalyse", "Reacfin", "Grant Thornton", "BDO", "Wavestone", "Capgemini",
+]
+
+
+def competitor_hit(text: str, names: List[str]) -> Optional[str]:
+    low = (text or "").lower()
+    for n in names:
+        n = n.strip()
+        if n and re.search(rf"(?<![\w]){re.escape(n.lower())}(?![\w])", low):
+            return n
+    return None
+
+
 async def do_search(req: SearchReq) -> Dict[str, Any]:
     q = req.topic
     if req.institutions:
@@ -564,9 +585,17 @@ async def do_search(req: SearchReq) -> Dict[str, Any]:
     rss = f"https://news.google.com/rss/search?q={requests.utils.quote(q)}&hl=fr&gl=FR&ceid=FR:fr"
     feed = await asyncio.to_thread(fetch_feed, rss)
     candidates = []
-    for entry in feed.entries[:14]:
+    competitors = req.competitors if req.competitors is not None else DEFAULT_COMPETITORS
+    blocked = 0
+    for entry in feed.entries[:24]:  # more candidates, since company news is removed below
         src = entry.source.title if entry.get("source") and entry.source.get("title") else ""
         summary = re.sub("<[^<]+?>", "", entry.get("summary", ""))[:280]
+        # competitors are removed before the AI even sees them
+        if competitor_hit(f"{entry.get('title', '')} {summary} {src}", competitors):
+            blocked += 1
+            continue
+        if len(candidates) >= 16:
+            break
         candidates.append({
             "title": entry.get("title", ""),
             "source": src,
@@ -583,16 +612,29 @@ async def do_search(req: SearchReq) -> Dict[str, Any]:
 SOURCES CANDIDATES (JSON): {json.dumps(candidates, ensure_ascii=False)}
 SUJETS DÉJÀ PROPOSÉS À EXCLURE: {exclude_txt}
 
-Applique: DÉDUPLICATION (regroupe le même événement, garde la source primaire), FILTRAGE (élimine anciens/promotionnels/vagues/doublons/peu fiables), SCORING /100 exigeant (pertinence assurance/actuariat, impact, actualité, fiabilité, potentiel LinkedIn), puis TRIAGE des {n} meilleurs sujets (exclure ceux déjà proposés).
+Applique: DÉDUPLICATION (regroupe le même événement, garde la source primaire), FILTRAGE (élimine anciens/promotionnels/vagues/doublons/peu fiables, et ÉLIMINE SYSTÉMATIQUEMENT toute actualité centrée sur une entreprise en particulier : résultats ou chiffre d'affaires d'une société, rachat, levée de fonds, nomination, lancement de produit ou d'offre, partenariat, communication commerciale, classement d'entreprises ; ainsi que tout cabinet de conseil, d'actuariat ou d'audit, concurrent de FORSIDES. Ne garde que les sujets de marché, de réglementation, d'institutions, d'études et de tendances), SCORING /100 exigeant (pertinence assurance/actuariat, impact, actualité, fiabilité, potentiel LinkedIn), puis TRIAGE des {n} meilleurs sujets (exclure ceux déjà proposés).
 Renvoie STRICTEMENT ce JSON, champs courts (summary 2 phrases max, why_attention et main_insight 1 phrase chacun):
 {{"candidates_count": {len(candidates)}, "topics": [
   {{"title": "titre éditorial reformulé court", "source": "source primaire", "source_url": "lien fiable",
     "date": "date lisible", "summary": "", "why_attention": "", "main_insight": "", "sector": "",
-    "priority": "PRIORITÉ ÉDITORIALE | TRÈS FORT | BON SUJET", "score": int 0-100}}
+    "priority": "PRIORITÉ ÉDITORIALE | TRÈS FORT | BON SUJET", "score": int 0-100,
+    "company_focus": true si le sujet porte principalement sur une entreprise ou un cabinet en particulier, sinon false}}
 ]}}
 N'invente rien: appuie-toi sur les titres/sources/snippets fournis."""
     data = await llm_json(EDITORIAL_SYSTEM, prompt, FAST_MODEL)
     topics = [t for t in (data.get("topics") or []) if isinstance(t, dict) and t.get("title")]
+    kept = []
+    for t in topics:
+        # second safety net on what the AI returns: company-centred topics and competitors are dropped
+        if t.get("company_focus") is True or str(t.get("company_focus")).lower() == "true":
+            blocked += 1
+            continue
+        if competitor_hit(" ".join(str(t.get(k) or "") for k in ("title", "summary", "source", "main_insight")), competitors):
+            blocked += 1
+            continue
+        t.pop("company_focus", None)
+        kept.append(t)
+    topics = kept
     for t in topics:
         t["score"] = max(0, min(100, to_int(t.get("score"))))
     topics.sort(key=lambda t: t["score"], reverse=True)
@@ -609,6 +651,11 @@ N'invente rien: appuie-toi sur les titres/sources/snippets fournis."""
         t["id"] = str(uuid.uuid4())
         t.setdefault("date_label", french_date_label(None))
     data["topics"] = topics
+    data["excluded_companies"] = blocked
+    if not topics:
+        raise HTTPException(status_code=404, detail=(
+            "Aucun sujet retenu : les résultats portaient sur des entreprises ou des concurrents. "
+            "Reformulez la recherche (réglementation, marché, institution…)."))
     return data
 
 
