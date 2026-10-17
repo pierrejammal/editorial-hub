@@ -16,7 +16,7 @@ const initialFormat = (post) => {
   return f === "B" ? "B" : "A";
 };
 import {
-  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal,
+  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal, Maximize2, X,
 } from "lucide-react";
 
 const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, label }) => {
@@ -62,6 +62,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
   const [fontsReady, setFontsReady] = useState(false);
   const [showConcepts, setShowConcepts] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
+  const [zoom, setZoom] = useState(null); // full-screen preview (data URL of the canvas)
   const logoInput = useRef(null);
 
   // Frozen-column mode: measure the free space and size the canvas to fit it entirely (4:5)
@@ -220,12 +221,96 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
 
   const split = Boolean(controlsTarget);
 
+  const openZoom = () => {
+    try { setZoom(canvasRef.current.toDataURL("image/png")); } catch { /* protected logo: no zoom */ }
+  };
+  useEffect(() => {
+    if (!zoom) return undefined;
+    const onKey = (e) => e.key === "Escape" && setZoom(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoom]);
+
+  const iconBtn =
+    "inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red";
+
+  // Frozen column: one compact toolbar + the visual using all the remaining height.
+  if (split) {
+    return (
+      <section data-testid="visual-preview" className="flex h-full flex-col">
+        <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+          <div className="flex gap-1 rounded-full bg-white p-1 ring-1 ring-slate-200">
+            {formats.map((f) => (
+              <button
+                key={f}
+                data-testid={`visual-format-${f}`}
+                onClick={() => setVersion(f)}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  version === f ? "bg-forsides-red text-white" : "text-forsides-slate hover:text-forsides-red"
+                }`}
+              >
+                {FORMAT_LABELS[f]}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button data-testid="concepts-toggle" onClick={() => setShowConcepts((v2) => !v2)} title="Comparer les concepts (dans Réglages du visuel)" className={iconBtn}>
+              <Columns2 className="h-3.5 w-3.5" />
+            </button>
+            <button data-testid="visual-zoom" onClick={openZoom} title="Agrandir" className={iconBtn}>
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+            <button data-testid="visual-download" onClick={download} title="Télécharger le PNG (1200×1500)"
+              className="inline-flex items-center gap-1.5 rounded-full bg-forsides-red px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-forsides-bordeaux">
+              <Download className="h-3.5 w-3.5" /> PNG
+            </button>
+            <button data-testid="visual-carousel" onClick={() => setShowCarousel(true)} title="Carrousel LinkedIn en PDF" className={iconBtn}>
+              <GalleryHorizontal className="h-3.5 w-3.5" /> <span className="hidden xl:inline">Carrousel</span>
+            </button>
+            {post.caption && (
+              <button data-testid="visual-export-full" onClick={exportFull} title="Exporter le post complet (visuel + texte)" className={iconBtn}>
+                <FileDown className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* the canvas takes all the height left in the frozen column, keeping its 4:5 ratio */}
+        <div ref={fitRef} className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
+          <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
+            onClick={openZoom}
+            title="Cliquer pour agrandir"
+            style={fit ? { width: fit.w, height: fit.h } : undefined}
+            className={`block cursor-zoom-in rounded-lg border border-slate-200 bg-white shadow-md ${fit ? "" : "h-auto w-full"}`} />
+        </div>
+
+        {createPortal(
+          <section data-testid="visual-controls" className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
+            <h3 className="mb-3 font-serif text-lg font-bold text-forsides-ink">Réglages du visuel</h3>
+            {controls}
+          </section>,
+          controlsTarget
+        )}
+
+        {zoom && (
+          <div data-testid="visual-zoom-overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setZoom(null)}>
+            <img src={zoom} alt="Visuel en grand" className="max-h-[94vh] max-w-full rounded-lg shadow-2xl" />
+            <button aria-label="Fermer" className="absolute right-5 top-5 rounded-full bg-white/90 p-2 text-forsides-ink hover:text-forsides-red">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+        {showCarousel && <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />}
+      </section>
+    );
+  }
+
   return (
     <section
       data-testid="visual-preview"
-      className={`rounded-xl border border-slate-200/80 bg-white shadow-sm ${split ? "flex h-full flex-col p-4" : "p-6"}`}
+      className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"
     >
-      <div className={`flex flex-wrap items-center justify-between gap-2 ${split ? "mb-3" : "mb-4"}`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-serif text-lg font-bold text-forsides-ink">Visuel LinkedIn · 4:5</h3>
         <div className="flex items-center gap-2">
           <button
@@ -252,36 +337,14 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
         </div>
       </div>
 
-      {split ? (
-        // the canvas shrinks to the space left in the frozen column, keeping its 4:5 ratio
-        <div ref={fitRef} className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
-          <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
-            style={fit ? { width: fit.w, height: fit.h } : undefined}
-            className={`block rounded-lg border border-slate-200 shadow-inner ${fit ? "" : "h-auto w-full"}`} />
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-slate-200 shadow-inner">
-          <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" />
-        </div>
-      )}
+      <div className="overflow-hidden rounded-lg border border-slate-200 shadow-inner">
+        <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" />
+      </div>
 
-      {split ? (
-        <>
-          <div className="mt-3 shrink-0">{actions}</div>
-          {createPortal(
-            <section data-testid="visual-controls" className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
-              <h3 className="mb-3 font-serif text-lg font-bold text-forsides-ink">Réglages du visuel</h3>
-              {controls}
-            </section>,
-            controlsTarget
-          )}
-        </>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {controls}
-          <div className="border-t border-slate-100 pt-3">{actions}</div>
-        </div>
-      )}
+      <div className="mt-4 space-y-3">
+        {controls}
+        <div className="border-t border-slate-100 pt-3">{actions}</div>
+      </div>
 
       {showCarousel && <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />}
     </section>
