@@ -132,7 +132,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       } catch (e) { /* tainted */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, split, template]);
+  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, frozen, template]);
 
   const download = () => {
     try {
