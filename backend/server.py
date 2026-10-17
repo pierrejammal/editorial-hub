@@ -1195,6 +1195,8 @@ class SavePostReq(BaseModel):
     scheduled_at: Optional[str] = None
     origin: str = "studio"
     source_text: str = ""
+    translated_from: Optional[str] = None  # EN post → its French original
+    english_id: Optional[str] = None       # FR post → its English version
 
 
 @api_router.post("/posts/save")
@@ -1203,8 +1205,9 @@ async def save_post(req: SavePostReq):
     doc = req.model_dump()
     doc["id"] = pid
     doc["saved"] = True
-    if not doc.get("source_text"):
-        doc.pop("source_text", None)  # never wipe a stored source with an empty value
+    for k in ("source_text", "translated_from", "english_id"):
+        if not doc.get(k):
+            doc.pop(k, None)  # never wipe a stored value with an empty one
     doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.posts.update_one({"id": pid}, {"$set": doc}, upsert=True)
     return {"id": pid}

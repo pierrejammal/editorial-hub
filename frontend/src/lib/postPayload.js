@@ -13,4 +13,6 @@ export const buildSavePayload = (post, { thumb = "", origin = "studio", schedule
   scheduled_at: scheduled_at || null,
   origin,
   source_text: post.source_text || "",
+  translated_from: post.translated_from || null,
+  english_id: post.english_id || null,
 });
