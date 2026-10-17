@@ -157,6 +157,108 @@ def normalize_scoring(data: Dict[str, Any]) -> None:
         q["score"] = max(0, min(100, to_int(q.get("score"))))
 
 
+# ---------- Chart validation ----------
+def to_number(v: Any) -> Optional[float]:
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.replace(" ", "").replace("\xa0", "").replace(" ", "")
+        s = re.sub(r"[^0-9,.\-]", "", s).replace(",", ".")
+        if s.count(".") > 1:  # "1.234.567" → thousands separators
+            s = s.replace(".", "")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+    return None
+
+
+def normalize_chart(data: Dict[str, Any]) -> None:
+    """Keep a chart only if it is really drawable: 2-6 numeric values, short labels.
+    A 'pie' whose parts don't form a whole becomes a bar chart (a pie of unrelated numbers is misleading).
+    When a valid chart exists, the visual defaults to the 'C' (Graphique) format."""
+    v = data.get("visual")
+    if not isinstance(v, dict):
+        return
+    c = v.get("chart")
+    items = []
+    if isinstance(c, dict) and c.get("type") in ("bar", "pie"):
+        for it in c.get("items") or []:
+            if not isinstance(it, dict):
+                continue
+            label = str(it.get("label") or "").strip()[:40]
+            val = to_number(it.get("value"))
+            if label and val is not None:
+                items.append({"label": label, "value": val})
+    if len(items) < 2:
+        v["chart"] = None
+        return
+    items = items[:6]
+    ctype = c["type"]
+    if ctype == "pie":
+        total = sum(i["value"] for i in items)
+        unit = str(c.get("unit") or "").strip()
+        if any(i["value"] < 0 for i in items) or total <= 0 or (unit == "%" and not 90 <= total <= 110):
+            ctype = "bar"
+    v["chart"] = {
+        "type": ctype,
+        "title": str(c.get("title") or "").strip()[:90],
+        "unit": str(c.get("unit") or "").strip()[:12],
+        "items": items,
+        "note": str(c.get("note") or "").strip()[:160],
+    }
+    v["recommended_format"] = "C"
+
+
+# ---------- Caption cleanup ----------
+HASHTAG_RE = re.compile(r"(?<!\w)#[\wÀ-ÿ]+")
+
+
+def clean_caption(text: str) -> str:
+    """Deterministic clean-up of the LinkedIn text: LinkedIn shows markdown symbols literally,
+    and AI output sometimes has doubled spaces, stray quotes, repeated paragraphs or 6 hashtags."""
+    if not text:
+        return ""
+    t = text.replace("\r\n", "\n").strip()
+    t = t.strip('"“”«» \n')
+    t = re.sub(r"^(caption|texte|post)\s*:\s*", "", t, flags=re.I)
+    t = re.sub(r"\*\*(.+?)\*\*", r"\1", t)            # **gras** → gras
+    t = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", t)  # *italique*
+    t = re.sub(r"^#{1,6}\s+", "", t, flags=re.M)        # ## Titre → Titre
+    t = re.sub(r"^\s*[-*•]\s+", "→ ", t, flags=re.M)   # markdown bullets → LinkedIn-friendly arrows
+    t = re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r" +([,.])", r"\1", t)                  # "mot ." → "mot."
+    t = re.sub(r"(?<=\w)([;:!?])(?=\s|$)", r" \1", t, flags=re.M)  # French: "mot :" (not 14:30, not URLs)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    t = "\n".join(line.strip() for line in t.split("\n"))
+
+    # drop exact duplicate paragraphs (the model sometimes repeats its conclusion)
+    seen, paras = set(), []
+    for p in t.split("\n\n"):
+        key = re.sub(r"\W+", "", p.lower())
+        if key and key in seen:
+            continue
+        seen.add(key)
+        paras.append(p)
+    t = "\n\n".join(paras)
+
+    # hashtag-only lines: merged, de-duplicated, max 3, on one final line (inline #tags in sentences are left alone)
+    lines, tags = [], []
+    for line in t.split("\n"):
+        if line and HASHTAG_RE.sub("", line).strip() == "":
+            for tag in HASHTAG_RE.findall(line):
+                if tag.lower() not in [x.lower() for x in tags]:
+                    tags.append(tag)
+        else:
+            lines.append(line)
+    t = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+    if tags:
+        t += "\n\n" + " ".join(tags[:3])
+    return t.strip()
+
+
 # ---------- URL safety ----------
 def check_public_url(url: str) -> None:
     """Refuse non-web URLs and addresses inside the server's own network (localhost, 10.x, 169.254.x...),
@@ -316,7 +418,32 @@ CAPTION_RULES = (
     "Maximum 2 ou 3 hashtags pertinents et optionnels. "
     "STRUCTURE: 1) accroche forte, 2) contexte bref, 3) décryptage à valeur ajoutée (pas un simple résumé), "
     "4) pourquoi cela compte (assureurs/actuaires/institutions/marché) si pertinent, 5) conclusion naturelle. "
-    "Ne jamais inventer de chiffres, dates ou citations."
+    "Ne jamais inventer de chiffres, dates ou citations. "
+    "FORME (texte publié tel quel sur LinkedIn) : texte brut, AUCUN markdown (pas de **, #, ##), "
+    "paragraphes courts séparés par une ligne vide, hashtags éventuels sur la dernière ligne uniquement. "
+    "Chaque phrase est grammaticalement complète et se suit logiquement : pas de phrase coupée ou "
+    "laissée en suspens, pas de répétition d'une même idée, pas de connecteur incohérent "
+    "(« ainsi », « en effet », « par conséquent » seulement s'ils sont justifiés). "
+    "Accords, orthographe et ponctuation française corrects. Relis-toi avant de répondre."
+)
+
+
+# Inserted as a value inside f-strings, so single braces here (no escaping needed).
+CHART_SCHEMA = (
+    '{"type": "bar | pie | none", "title": "titre court du graphique (6-10 mots)", '
+    '"unit": "unité commune : %, €, Md€, M€, ans, points… ou \'\'", '
+    '"items": [{"label": "libellé court (max 4 mots)", "value": nombre}], '
+    '"note": "lecture du graphique en 1 phrase courte ou \'\'"}'
+)
+
+CHART_RULES = (
+    "GRAPHIQUE (visual.chart) : s'il existe au moins 2 valeurs chiffrées COMPARABLES dans la source "
+    "(même unité : évolution dans le temps, comparaison entre acteurs/pays/régimes, répartition), "
+    "remplis chart avec 2 à 6 items. 'value' est un NOMBRE pur (ex. 4.2, jamais \"4,2 %\"). "
+    "type='pie' UNIQUEMENT pour une répartition dont les parts forment un tout (≈100 %) ; "
+    "type='bar' pour une évolution ou une comparaison. "
+    "N'utilise QUE des chiffres présents dans la source, n'invente ni n'estime aucune valeur. "
+    "Sinon type='none' et items=[]."
 )
 
 
@@ -343,13 +470,15 @@ def ANALYSIS_INSTRUCTIONS(length: str) -> str:
     "subtitle": "", "key_figure_value": "", "key_figure_label": "",
     "important_date": "date importante ou échéance ou ''",
     "data_points": ["3 à 4 informations clés très courtes"],
-    "insight_line": "phrase insight finale très courte pour le visuel"
+    "insight_line": "phrase insight finale très courte pour le visuel",
+    "chart": {CHART_SCHEMA}
   }},
   "caption": "caption LinkedIn complet prêt à publier",
   "quality": {{ "score": int 0-100, "criteria": {{"veracite": int, "nouveaute": int, "interet": int, "clarte": int, "originalite": int, "style": int}}, "suggestions": [] }},
   "sources": [{{"title": "", "url": ""}}]
 }}
 Choisis l'angle le PLUS pertinent (ne pas toujours le même). recommended_format='B' si le sujet repose sur un chiffre fort / plusieurs dates / comparaison, sinon 'A'.
+{CHART_RULES}
 Caption: {LENGTH_GUIDE.get(length, LENGTH_GUIDE['standard'])} {CAPTION_RULES}
 Le score doit être exigeant et justifié."""
 
@@ -375,6 +504,8 @@ CONTENU:
 {ANALYSIS_INSTRUCTIONS(req.length)}"""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
     normalize_scoring(data)
+    normalize_chart(data)
+    data["caption"] = clean_caption(data.get("caption") or "")
     data["meta"] = data.get("meta") or {}
     data["meta"].update({
         "source": scraped["site_name"],
@@ -466,6 +597,8 @@ SECTEUR: {t.get('sector', '')}
 Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('score')})."""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
     normalize_scoring(data)
+    normalize_chart(data)
+    data["caption"] = clean_caption(data.get("caption") or "")
     data["meta"] = data.get("meta") or {}
     data["meta"].update({
         "source": t.get("source", ""),
@@ -500,10 +633,13 @@ Renvoie STRICTEMENT ce JSON:
     "key_figure_label": "libellé court du chiffre ou ''",
     "important_date": "date/échéance présente ou ''",
     "data_points": ["2 à 4 points clés très courts tirés du texte"],
-    "insight_line": "phrase finale courte pour le visuel"
+    "insight_line": "phrase finale courte pour le visuel",
+    "chart": {CHART_SCHEMA}
   }}
-}}"""
+}}
+{CHART_RULES} (Ici, la « source » est le texte de l'utilisateur.)"""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    normalize_chart(data)
     data["meta"] = data.get("meta") or {}
     data["meta"].setdefault("date_label", french_date_label(None))
     data["meta"].setdefault("source", "")
@@ -620,7 +756,7 @@ Longueur cible: {LENGTH_GUIDE.get(req.length, LENGTH_GUIDE['standard'])}
 {CAPTION_RULES}
 Renvoie UNIQUEMENT le texte du caption, sans guillemets ni commentaire."""
     text = await llm_text(CAPTION_SYSTEM, prompt)
-    return {"caption": text.strip().strip('"')}
+    return {"caption": clean_caption(text)}
 
 
 @api_router.post("/quality")

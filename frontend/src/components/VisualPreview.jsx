@@ -2,8 +2,16 @@ import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import {
-  renderVisual, loadImage, sourceLogoSrc, VW, VH, FONT_SET,
+  renderVisual, loadImage, sourceLogoSrc, hasChart, VW, VH, FONT_SET,
 } from "@/lib/visualRender";
+
+const FORMAT_LABELS = { A: "Analyse", B: "Data", C: "Graphique" };
+const CONCEPT_LABELS = { A: "Analyse", B: "Data / Insight", C: "Graphique" };
+const initialFormat = (post) => {
+  const f = post.visual?.recommended_format;
+  if (f === "C" && hasChart(post)) return "C";
+  return f === "B" ? "B" : "A";
+};
 import {
   Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check,
 } from "lucide-react";
@@ -41,7 +49,9 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
 
   const canvasRef = useRef(null);
   const v = post.visual || {};
-  const [version, setVersion] = useState(v.recommended_format === "B" ? "B" : "A");
+  const [version, setVersion] = useState(() => initialFormat(post));
+  const chartOk = hasChart(post);
+  const formats = chartOk ? ["A", "B", "C"] : ["A", "B"];
   const [title, setTitle] = useState(v.title_short || post.editorial?.fact || post.meta?.topic || "");
   const [uploadedLogoSrc, setUploadedLogoSrc] = useState(null);
   const [logoImg, setLogoImg] = useState(null);
@@ -51,6 +61,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
   const logoInput = useRef(null);
 
   useEffect(() => setTitle(v.title_short || post.editorial?.fact || post.meta?.topic || ""), [v.title_short]);
+
+  // new content (e.g. "Optimiser avec l'IA" found figures): follow the recommended format;
+  // never stay on "Graphique" if the chart disappeared
+  useEffect(() => { setVersion(initialFormat(post)); }, [v.recommended_format, chartOk]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false;
@@ -128,10 +142,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
             onClick={() => setShowConcepts((s) => !s)}
             className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red"
           >
-            <Columns2 className="h-3.5 w-3.5" /> 2 concepts
+            <Columns2 className="h-3.5 w-3.5" /> {formats.length} concepts
           </button>
           <div className="flex gap-1 rounded-full bg-slate-100 p-1">
-            {["A", "B"].map((f) => (
+            {formats.map((f) => (
               <button
                 key={f}
                 data-testid={`visual-format-${f}`}
@@ -140,7 +154,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
                   version === f ? "bg-forsides-red text-white" : "text-forsides-slate"
                 }`}
               >
-                {f === "A" ? "Analyse" : "Data"}
+                {FORMAT_LABELS[f]}
               </button>
             ))}
           </div>
@@ -152,11 +166,11 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
           <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-slate-400">
             Choisissez le concept le plus fort
           </p>
-          <div className="grid grid-cols-2 gap-3">
-            <ConceptThumb post={localPost} version="A" images={images} fontsReady={fontsReady}
-              active={version === "A"} onChoose={() => chooseConcept("A")} label="Concept 1 · Analyse" />
-            <ConceptThumb post={localPost} version="B" images={images} fontsReady={fontsReady}
-              active={version === "B"} onChoose={() => chooseConcept("B")} label="Concept 2 · Data / Insight" />
+          <div className={`grid gap-3 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+            {formats.map((f, i) => (
+              <ConceptThumb key={f} post={localPost} version={f} images={images} fontsReady={fontsReady}
+                active={version === f} onChoose={() => chooseConcept(f)} label={`Concept ${i + 1} · ${CONCEPT_LABELS[f]}`} />
+            ))}
           </div>
         </div>
       )}
@@ -184,7 +198,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
             className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
             <Upload className="h-4 w-4" /> Logo source
           </button>
-          <button data-testid="visual-toggle-format" onClick={() => setVersion((f) => (f === "A" ? "B" : "A"))}
+          <button data-testid="visual-toggle-format" onClick={() => setVersion((f) => formats[(formats.indexOf(f) + 1) % formats.length])}
             className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
             <LayoutTemplate className="h-4 w-4" /> Format
           </button>

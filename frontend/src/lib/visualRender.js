@@ -51,7 +51,7 @@ export const sourceLogoSrc = (source) => {
   return id && id.img ? id.img : null;
 };
 
-function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, draw = true) {
+function wrapWords(ctx, text, maxW) {
   const words = (text || "").split(/\s+/).filter(Boolean);
   const lines = [];
   let line = [];
@@ -63,6 +63,25 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, dra
     } else line.push(w);
   }
   if (line.length) lines.push(line);
+  return lines;
+}
+
+// When text is too long for its box, drop whole trailing sentences rather than cutting a
+// sentence in the middle with "…" (a half sentence on the visual reads as an error).
+function fitSentences(ctx, text, maxW, maxLines) {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (wrapWords(ctx, t, maxW).length <= maxLines) return t;
+  const sentences = t.split(/(?<=[.!?])\s+(?=[A-ZÀ-ÖØ-Ý0-9«"“])/);
+  for (let n = sentences.length - 1; n >= 1; n--) {
+    const cand = sentences.slice(0, n).join(" ");
+    if (wrapWords(ctx, cand, maxW).length <= maxLines) return cand;
+  }
+  return t; // even one sentence is too long: drawParagraph will shorten it with "…"
+}
+
+function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, draw = true) {
+  if (maxLines < 1) return y;
+  const lines = wrapWords(ctx, fitSentences(ctx, text, maxW, maxLines), maxW);
   if (lines.length > maxLines) {
     lines.length = maxLines;
     const last = lines[maxLines - 1];
@@ -74,9 +93,10 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, dra
   lines.forEach((ln, idx) => {
     const isLast = idx === lines.length - 1;
     const str = ln.join(" ");
-    if (justify && !isLast && ln.length > 1) {
-      const wordsW = ln.reduce((s, w) => s + ctx.measureText(w).width, 0);
-      const gap = (maxW - wordsW) / (ln.length - 1);
+    const wordsW = ln.reduce((s, w) => s + ctx.measureText(w).width, 0);
+    const gap = ln.length > 1 ? (maxW - wordsW) / (ln.length - 1) : 0;
+    // justify only when it looks natural: huge holes between a few words read as a layout bug
+    if (justify && !isLast && ln.length > 1 && gap <= ctx.measureText(" ").width * 3.2) {
       let cx = x;
       ln.forEach((w) => {
         ctx.fillText(w, cx, cy);
@@ -88,6 +108,18 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, dra
     cy += lineH;
   });
   return cy;
+}
+
+// The title is never cut: a long title gets a smaller font until it fits in maxLines.
+function drawTitle(ctx, title, top, size, lineH, maxLines) {
+  const maxW = VW - PAD * 2;
+  let px = size;
+  ctx.font = `800 ${px}px Outfit`;
+  while (px > 34 && wrapWords(ctx, title, maxW).length > maxLines) {
+    px -= 2;
+    ctx.font = `800 ${px}px Outfit`;
+  }
+  return drawParagraph(ctx, title, PAD, top, maxW, Math.round((lineH * px) / size), true, maxLines);
 }
 
 function drawEmblem(ctx, id, rightX, topY) {
@@ -108,7 +140,9 @@ function drawEmblem(ctx, id, rightX, topY) {
   } else {
     ctx.font = "600 22px Outfit";
     ctx.fillStyle = "#333";
-    ctx.fillText(id.name, rightX, topY + 30);
+    let name = id.name;
+    while (name.length > 4 && ctx.measureText(name).width > 420) name = name.slice(0, -2).trimEnd() + "…";
+    ctx.fillText(name, rightX, topY + 30);
   }
   ctx.textAlign = "left";
 }
@@ -167,15 +201,32 @@ export function resolveContent(post, title) {
   return { summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: clean(m.date_label) };
 }
 
-// Density-aware scale: sparse content gets bigger type so the canvas never looks empty.
+// Density-aware scale: sparse content gets bigger type so the canvas never looks empty,
+// and dense content gets smaller type so it never runs into the source line / signature.
 function fitScale(measure, avail) {
   let s = 1;
+  if (measure(1) > avail) {
+    while (s > 0.62 && measure(s) > avail) s -= 0.04;
+    return s;
+  }
   for (let i = 0; i < 6; i++) {
     const used = measure(s);
     if (used >= avail * 0.78 || s >= 1.5) break;
     s = Math.min(1.5, s * Math.min(1.18, Math.sqrt((avail * 0.85) / Math.max(used, 1))));
   }
+  while (s > 1 && measure(s) > avail) s -= 0.04;
   return s;
+}
+
+// Largest font size (px) at which `text` fits in `maxW`, for big figures in Anton.
+function fitFontSize(ctx, text, family, size, maxW, min = 40) {
+  let px = size;
+  ctx.font = `${px}px ${family}`;
+  while (px > min && ctx.measureText(text).width > maxW) {
+    px -= 4;
+    ctx.font = `${px}px ${family}`;
+  }
+  return px;
 }
 
 function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
@@ -183,7 +234,7 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
   ctx.font = "800 58px Outfit";
   ctx.textAlign = "left";
   const titleTop = Math.max(headerBottom + 110, 310);
-  const titleBottom = drawParagraph(ctx, title, PAD, titleTop, VW - PAD * 2, 70, true, 4);
+  const titleBottom = drawTitle(ctx, title, titleTop, 58, 70, 4);
   drawRule(ctx, titleBottom + 20);
 
   const maxW = VW - PAD * 2;
@@ -204,23 +255,26 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
   };
   const s = fitScale(measure, bottom - top);
   const used = measure(s) - Math.max(0, blocks - 1) * 40;
-  const gap = blocks > 1 ? Math.min(120 * s, Math.max(36, (bottom - top - used) / (blocks - 1))) : 0;
+  // spread blocks evenly in the free space, but never push them past the bottom
+  const gap = blocks > 1 ? Math.max(18, Math.min(120 * s, (bottom - top - used) / (blocks - 1))) : 0;
 
   let y = top;
+  const linesLeft = (lineH, offset) => Math.floor((bottom - y - offset) / lineH);
   if (content.summary) {
     drawLabel(ctx, "L'ESSENTIEL", PAD, y);
     ctx.fillStyle = INK;
     ctx.font = `400 ${Math.round(31 * s)}px Outfit`;
-    y = drawParagraph(ctx, content.summary, PAD, y + 44 * s, maxW, 44 * s, true, 6) + gap;
+    y = drawParagraph(ctx, content.summary, PAD, y + 44 * s, maxW, 44 * s, true, Math.min(6, linesLeft(44 * s, 44 * s))) + gap;
   }
   points.forEach((p, i) => {
-    if (y > bottom - 60) return;
+    const room = linesLeft(40 * s, 46 * s);
+    if (room < 1) return; // no space left: skip the block rather than overlapping the footer
     ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
     ctx.fillRect(PAD, y - 6, 14, 14);
     drawLabel(ctx, p.label.toUpperCase(), PAD + 40, y);
     ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
     ctx.font = `500 ${Math.round(30 * s)}px Outfit`;
-    y = drawParagraph(ctx, p.text, PAD + 40, y + 46 * s, maxW - 40, 40 * s, false, 4) + gap;
+    y = drawParagraph(ctx, p.text, PAD + 40, y + 46 * s, maxW - 40, 40 * s, false, Math.min(4, room)) + gap;
   });
 }
 
@@ -229,7 +283,7 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
   ctx.font = "800 46px Outfit";
   ctx.textAlign = "left";
   const titleTop = Math.max(headerBottom + 90, 300);
-  const titleBottom = drawParagraph(ctx, title, PAD, titleTop, VW - PAD * 2, 56, true, 4);
+  const titleBottom = drawTitle(ctx, title, titleTop, 46, 56, 4);
   drawRule(ctx, titleBottom + 18);
 
   const colGap = 60;
@@ -247,11 +301,14 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
   if (hasData) {
     const fig = String(v.key_figure_value || "");
     const extras = (v.data_points || []).map(clean).filter((d) => d && !(fig && d.includes(fig))).slice(0, 4);
-    const leftCol = (s, draw) => {
+    // draw defaults to false: fitScale calls leftCol(s) to MEASURE only. (Before, the missing
+    // argument fell back to drawParagraph's draw=true and left ghost copies of the text.)
+    const leftCol = (s, draw = false) => {
       let y = top;
       if (fig) {
         if (draw) { ctx.fillStyle = BRICK; }
-        ctx.font = `${Math.round(128 * s)}px Anton`;
+        // shrink long figures ("12,5 Md€") so they never run into the right column
+        fitFontSize(ctx, fig, "Anton", Math.round(128 * s), leftW);
         if (draw) ctx.fillText(fig, leftX, y + 100 * s);
         y += 118 * s;
         if (v.key_figure_label) {
@@ -308,11 +365,12 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
     const s = fitScale(measure, bottom - top);
     let ry = top;
     points.forEach((p, i) => {
-      if (ry > bottom - 60) return;
+      const room = Math.floor((bottom - ry - 56 * s) / (44 * s));
+      if (room < 1) return;
       drawLabel(ctx, p.label.toUpperCase(), rx, ry + 10);
       ctx.fillStyle = i % 2 === 0 ? BORDEAUX : BRICK;
       ctx.font = `600 ${Math.round(34 * s)}px Outfit`;
-      ry = drawParagraph(ctx, p.text, rx, ry + 56 * s, rightW, 44 * s, false, 4) + 42;
+      ry = drawParagraph(ctx, p.text, rx, ry + 56 * s, rightW, 44 * s, false, Math.min(4, room)) + 42;
     });
   } else if (content.sourceTitle || content.source) {
     drawLabel(ctx, "À LA SOURCE", rx, top + 10);
@@ -329,6 +387,202 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
     }
   }
   ctx.textAlign = "left";
+}
+
+// ---------- Format C · Graphique ----------
+const CHART_COLORS = [BRICK, BORDEAUX, CORAL, "#D98A6A", "#9E5A4F", "#E3BBAE"];
+
+export const hasChart = (post) => {
+  const c = post?.visual?.chart;
+  return Boolean(c && (c.type === "bar" || c.type === "pie") && Array.isArray(c.items) && c.items.length >= 2);
+};
+
+const fmtNum = (v) => Number(v).toLocaleString("fr-FR", { maximumFractionDigits: Math.abs(v) < 10 ? 2 : 1 });
+const fmtValue = (v, unit) => {
+  const n = fmtNum(v);
+  if (!unit) return n;
+  return unit === "%" ? `${n} %` : `${n} ${unit}`;
+};
+
+function ellipsize(ctx, text, maxW) {
+  let t = String(text || "");
+  if (ctx.measureText(t).width <= maxW) return t;
+  while (t.length > 1 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+  return t.trimEnd() + "…";
+}
+
+function drawBarChart(ctx, chart, x, y, w, h) {
+  const items = chart.items;
+  const vals = items.map((i) => Number(i.value));
+  const lo = Math.min(0, ...vals);
+  const hi = Math.max(0, ...vals);
+  const span = hi - lo || 1;
+  // years / periods ("2023", "T1 2025") read best as vertical columns; names as horizontal bars
+  const vertical = items.every((i) => /^(\d{4}|[TSQH]\d[\s-]?\d{2,4}|\d{4}[\s-]\d{2,4})$/i.test(String(i.label).trim()));
+
+  if (vertical) {
+    const labelH = 50;
+    const valueH = 54;
+    const negPad = lo < 0 ? valueH : 0; // room under negative bars for their value, above the axis labels
+    const plotTop = y + valueH;
+    const plotH = h - labelH - valueH - negPad;
+    const colW = w / items.length;
+    const barW = Math.min(150, colW * 0.62);
+    const zeroY = plotTop + (hi / span) * plotH;
+    ctx.fillStyle = DOT;
+    ctx.fillRect(x, zeroY - 1, w, 3);
+    items.forEach((it, i) => {
+      const v = Number(it.value);
+      const bh = (Math.abs(v) / span) * plotH;
+      const bx = x + colW * i + (colW - barW) / 2;
+      const by = v >= 0 ? zeroY - bh : zeroY;
+      ctx.fillStyle = i === items.length - 1 ? BRICK : CORAL;
+      ctx.fillRect(bx, by, barW, Math.max(bh, 3));
+      ctx.textAlign = "center";
+      ctx.fillStyle = i === items.length - 1 ? BORDEAUX : INK;
+      ctx.font = `${items.length > 4 ? 34 : 42}px Anton`;
+      const vy = v >= 0 ? by - 14 : by + Math.max(bh, 3) + 42;
+      ctx.fillText(ellipsize(ctx, fmtValue(v, chart.unit), colW - 8), bx + barW / 2, vy);
+      ctx.font = "600 24px Outfit";
+      ctx.fillStyle = "#4a3a36";
+      ctx.fillText(ellipsize(ctx, it.label, colW - 8), bx + barW / 2, y + h - 12);
+    });
+    ctx.textAlign = "left";
+    return;
+  }
+
+  // horizontal bars: label on top of each bar, value at the end of the bar
+  const rowH = Math.min(140, h / items.length);
+  const barH = Math.max(22, rowH * 0.36);
+  const valueW = 200;
+  const plotW = w - valueW;
+  const zeroX = x + (-lo / span) * plotW;
+  items.forEach((it, i) => {
+    const v = Number(it.value);
+    const ry = y + rowH * i;
+    ctx.font = "600 26px Outfit";
+    ctx.fillStyle = INK;
+    ctx.fillText(ellipsize(ctx, it.label, w), x, ry + 30);
+    const bw = Math.max(4, (Math.abs(v) / span) * plotW);
+    const bx = v >= 0 ? zeroX : zeroX - bw;
+    const by = ry + 46;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.fillRect(bx, by, bw, barH);
+    ctx.fillStyle = BORDEAUX;
+    ctx.font = `${Math.round(Math.min(44, barH * 1.25))}px Anton`;
+    ctx.fillText(fmtValue(v, chart.unit), Math.max(bx + bw, zeroX) + 16, by + barH * 0.86);
+  });
+  if (lo < 0) {
+    ctx.fillStyle = DOT;
+    ctx.fillRect(zeroX - 1, y + 40, 3, rowH * items.length - 40);
+  }
+}
+
+function drawPieChart(ctx, chart, x, y, w, h) {
+  const items = chart.items;
+  const total = items.reduce((s, i) => s + Number(i.value), 0) || 1;
+  const r = Math.min(h / 2, w * 0.24);
+  const cx = x + r;
+  const cy = y + h / 2;
+  let a = -Math.PI / 2;
+  items.forEach((it, i) => {
+    const sweep = (Number(it.value) / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, a, a + sweep);
+    ctx.closePath();
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.fill();
+    a += sweep;
+  });
+  // donut hole with the largest share in the middle
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.56, 0, Math.PI * 2);
+  ctx.fillStyle = BLUSH;
+  ctx.fill();
+  const top = items.reduce((m, it) => (Number(it.value) > Number(m.value) ? it : m), items[0]);
+  ctx.textAlign = "center";
+  ctx.fillStyle = BORDEAUX;
+  const centerTxt = `${fmtNum((Number(top.value) / total) * 100)} %`;
+  fitFontSize(ctx, centerTxt, "Anton", Math.round(r * 0.32), r * 0.9, 24); // stays inside the hole
+  ctx.fillText(centerTxt, cx, cy + r * 0.08);
+  ctx.font = `600 ${Math.round(Math.max(18, r * 0.11))}px Outfit`;
+  ctx.fillStyle = "#4a3a36";
+  ctx.fillText(ellipsize(ctx, top.label, r * 0.95), cx, cy + r * 0.3);
+  ctx.textAlign = "left";
+
+  // legend
+  const lx = x + r * 2 + 60;
+  const lw = x + w - lx;
+  const rowH = Math.min(96, h / items.length);
+  const ly = cy - (rowH * items.length) / 2;
+  items.forEach((it, i) => {
+    const ry = ly + rowH * i;
+    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.fillRect(lx, ry + 12, 26, 26);
+    ctx.fillStyle = INK;
+    ctx.font = "600 26px Outfit";
+    ctx.fillText(ellipsize(ctx, it.label, lw - 42), lx + 42, ry + 34);
+    ctx.fillStyle = BORDEAUX;
+    ctx.font = "34px Anton";
+    const pct = chart.unit === "%" ? "" : `  (${fmtNum((Number(it.value) / total) * 100)} %)`;
+    ctx.fillText(ellipsize(ctx, fmtValue(it.value, chart.unit) + pct, lw - 42), lx + 42, ry + 76);
+  });
+}
+
+function renderChart(ctx, { v, title, content, headerBottom, footerTop }) {
+  const chart = v.chart;
+  ctx.fillStyle = BORDEAUX;
+  ctx.font = "800 48px Outfit";
+  ctx.textAlign = "left";
+  const titleTop = Math.max(headerBottom + 90, 300);
+  const titleBottom = drawTitle(ctx, title, titleTop, 48, 58, 3);
+  drawRule(ctx, titleBottom + 18);
+
+  const maxW = VW - PAD * 2;
+  const bottom = footerTop - 34;
+  let y = titleBottom + 74;
+  if (chart.title) {
+    drawLabel(ctx, ellipsize(ctx, chart.title.toUpperCase(), maxW), PAD, y);
+    y += 30;
+  }
+
+  // Text under the chart: only whole sentences, never a sentence cut with "…".
+  // Each block's exact height: first baseline offset + (lines - 1) * line height.
+  const LH = 38;
+  const note = clean(chart.note);
+  ctx.font = "italic 500 28px Outfit";
+  const noteTxt = note ? fitSentences(ctx, note, maxW, 2) : "";
+  const noteLines = noteTxt && wrapWords(ctx, noteTxt, maxW).length <= 2 ? wrapWords(ctx, noteTxt, maxW).length : 0;
+  const noteH = noteLines ? 40 + (noteLines - 1) * LH + 10 : 0;
+  ctx.font = "400 27px Outfit";
+  const sumTxt = content.summary ? fitSentences(ctx, content.summary, maxW, 3) : "";
+  const sumLines = sumTxt && wrapWords(ctx, sumTxt, maxW).length <= 3 ? wrapWords(ctx, sumTxt, maxW).length : 0;
+  const sumH = sumLines ? 36 + 44 + (sumLines - 1) * LH + 10 : 0;
+
+  const MIN_CHART = 400; // the chart comes first: drop the summary, then the note, before squeezing it
+  let showSummary = sumLines > 0;
+  let showNote = noteLines > 0;
+  let chartH = bottom - y - (showNote ? noteH : 0) - (showSummary ? sumH : 0) - 30;
+  if (chartH < MIN_CHART && showSummary) { showSummary = false; chartH += sumH; }
+  if (chartH < MIN_CHART && showNote) { showNote = false; chartH += noteH; }
+  chartH = Math.min(chartH, 640);
+
+  if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, maxW, chartH);
+  else drawBarChart(ctx, chart, PAD, y, maxW, chartH);
+  y += chartH + 30;
+
+  if (showNote) {
+    ctx.fillStyle = "#4a3a36";
+    ctx.font = "italic 500 28px Outfit";
+    y = drawParagraph(ctx, noteTxt, PAD, y + 40, maxW, LH, false, noteLines) - LH + 10;
+  }
+  if (showSummary && y + sumH <= bottom + 10) {
+    drawLabel(ctx, "L'ESSENTIEL", PAD, y + 36);
+    ctx.fillStyle = INK;
+    ctx.font = "400 27px Outfit";
+    drawParagraph(ctx, sumTxt, PAD, y + 80, maxW, LH, false, sumLines);
+  }
 }
 
 function drawSourceFooter(ctx, content, top) {
@@ -421,7 +675,8 @@ export function renderVisual(ctx, { post, version, images }) {
   const content = resolveContent(post, title);
   const footerTop = VH - 200;
 
-  if (version === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
+  if (version === "C" && hasChart(post)) renderChart(ctx, { v, title, content, headerBottom, footerTop });
+  else if (version === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
   else renderAnalysis(ctx, { title, content, headerBottom, footerTop });
 
   drawSourceFooter(ctx, content, footerTop);
