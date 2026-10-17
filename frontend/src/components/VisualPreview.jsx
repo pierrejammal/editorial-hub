@@ -292,15 +292,21 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
           controlsTarget
         )}
 
-        {zoom && (
-          <div data-testid="visual-zoom-overlay" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setZoom(null)}>
+        {/* Rendered at the page level (portal): inside the frozen column it would sit under the
+            sticky top menu, because a sticky element forms its own stacking layer. */}
+        {zoom && createPortal(
+          <div data-testid="visual-zoom-overlay" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={() => setZoom(null)}>
             <img src={zoom} alt="Visuel en grand" className="max-h-[94vh] max-w-full rounded-lg shadow-2xl" />
             <button aria-label="Fermer" className="absolute right-5 top-5 rounded-full bg-white/90 p-2 text-forsides-ink hover:text-forsides-red">
               <X className="h-5 w-5" />
             </button>
-          </div>
+          </div>,
+          document.body
         )}
-        {showCarousel && <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />}
+        {showCarousel && createPortal(
+          <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />,
+          document.body
+        )}
       </section>
     );
   }
