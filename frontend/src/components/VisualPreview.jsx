@@ -24,7 +24,8 @@ const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, lab
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    renderVisual(c.getContext("2d"), { post, version, images });
+    // a drawing bug must never crash the whole page: log it and keep the app usable
+    try { renderVisual(c.getContext("2d"), { post, version, images }); } catch (e) { console.error("concept render failed", e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.visual, post.meta, post.editorial, images, fontsReady, version]);
   return (
@@ -111,7 +112,12 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
-    renderVisual(c.getContext("2d"), { post: localPost, version, images });
+    try {
+      renderVisual(c.getContext("2d"), { post: localPost, version, images });
+    } catch (e) {
+      console.error("visual render failed", e); // a drawing bug must never crash the whole page
+      return;
+    }
     if (onThumb) {
       try {
         const t = document.createElement("canvas");

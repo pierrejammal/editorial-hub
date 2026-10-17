@@ -140,12 +140,15 @@ function drawTitle(ctx, title, top, size, lineH, maxLines) {
   return drawParagraph(ctx, title, PAD, top, maxW, Math.round((lineH * px) / size), true, maxLines);
 }
 
-function drawEmblem(ctx, id, rightX, topY) {
-  // right-aligned emblem: acronym chip + name line
+function drawEmblem(ctx, id, rightX, topY, fallbackName = "") {
+  // right-aligned emblem: acronym chip + name line.
+  // Institutions with a logo file have no name of their own: while the logo is loading (or if it
+  // fails to load) we write the source name instead of crashing on an undefined name.
+  const label = String(id.name || fallbackName || "");
   ctx.textAlign = "right";
   if (id.acronym) {
     ctx.font = "700 20px Outfit";
-    const nameW = Math.min(ctx.measureText(id.name).width, 330);
+    const nameW = Math.min(ctx.measureText(label).width, 330);
     ctx.fillStyle = "#555";
     // name (wrapped to max 2 lines) under acronym
     ctx.font = "800 34px Outfit";
@@ -154,11 +157,11 @@ function drawEmblem(ctx, id, rightX, topY) {
     ctx.font = "500 17px Outfit";
     ctx.fillStyle = "#666";
     ctx.textAlign = "left";
-    drawParagraph(ctx, id.name, rightX - nameW, topY + 54, nameW, 22, false, 2);
+    if (label) drawParagraph(ctx, label, rightX - nameW, topY + 54, nameW, 22, false, 2);
   } else {
     ctx.font = "600 22px Outfit";
     ctx.fillStyle = "#333";
-    let name = id.name;
+    let name = label;
     while (name.length > 4 && ctx.measureText(name).width > 420) name = name.slice(0, -2).trimEnd() + "…";
     ctx.fillText(name, rightX, topY + 30);
   }
@@ -699,7 +702,7 @@ export function drawHeader(ctx, post, images) {
     ctx.drawImage(sourceLogoImg, VW - PAD - sw, logoBottom + 22, sw, sh);
   } else if (post.meta?.source) {
     const id = sourceIdentity(post.meta.source);
-    if (id) drawEmblem(ctx, id, VW - PAD, logoBottom + 18);
+    if (id) drawEmblem(ctx, id, VW - PAD, logoBottom + 18, post.meta.source);
   }
 
   return bannerBottom + 40;
