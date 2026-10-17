@@ -27,7 +27,7 @@ const Research = () => {
   const [maxResults, setMaxResults] = useState(research.params?.max_results || 6);
   const [showAdv, setShowAdv] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [generating, setGenerating] = useState(null); // topic being turned into a post
 
   const doSearch = async (exclude = []) => {
     if (!topic.trim()) {
@@ -70,7 +70,7 @@ const Research = () => {
   };
 
   const generate = async (t) => {
-    setGenerating(true);
+    setGenerating(t); // keep the chosen topic so the loading screen can show it
     try {
       const data = await analyzeTopic(t, "standard");
       setPost(data);
@@ -78,7 +78,7 @@ const Research = () => {
     } catch (err) {
       toast.error(err.detail || err.response?.data?.detail || "Échec de la génération");
     } finally {
-      setGenerating(false);
+      setGenerating(null);
     }
   };
 
@@ -87,8 +87,10 @@ const Research = () => {
   return (
     <div className="min-h-screen paper-grain">
       <BrandHeader />
-      {(loading || generating) && (
-        <LoadingWorkflow label={generating ? "Production éditoriale" : "Veille en cours"} />
+      {generating ? (
+        <LoadingWorkflow mode="generate" topic={generating} />
+      ) : (
+        loading && <LoadingWorkflow mode="search" />
       )}
       <main className="mx-auto max-w-4xl px-6 pb-24 pt-16">
         <div className="rise">

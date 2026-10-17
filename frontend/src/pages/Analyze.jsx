@@ -42,7 +42,7 @@ const Analyze = () => {
   return (
     <div className="min-h-screen paper-grain">
       <BrandHeader />
-      {loading && <LoadingWorkflow label="Analyse de la source" />}
+      {loading && <LoadingWorkflow mode="analyze" />}
       <main className="mx-auto max-w-3xl px-6 pb-24 pt-16">
         <div className="rise">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-forsides-red/10 text-forsides-red">
