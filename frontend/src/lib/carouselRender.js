@@ -3,6 +3,7 @@ import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
   clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
+  applyTemplate, currentTemplate, titleFontFamily, drawBullet,
 } from "@/lib/visualRender";
 
 const CL = {
@@ -42,12 +43,15 @@ function miniHeader(ctx, images, n, total) {
   ctx.fillRect(0, 0, VW, VH);
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
+  const label = String(currentTemplate().bannerText || "").trim().slice(0, 24);
   ctx.font = "56px Anton";
-  const tw = ctx.measureText("NEWS").width;
-  ctx.fillStyle = BRICK;
-  ctx.fillRect(PAD, 60, tw + 28, 70);
-  ctx.fillStyle = "#fff";
-  ctx.fillText("NEWS", PAD + 14, 117);
+  const tw = ctx.measureText(label).width;
+  if (label) {
+    ctx.fillStyle = BRICK;
+    ctx.fillRect(PAD, 60, tw + 28, 70);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, PAD + 14, 117);
+  }
   const logo = images?.logoImg;
   if (logo) {
     const lh = 60;
@@ -87,10 +91,11 @@ function coverPage(ctx, d, images, n, total) {
   const area = { top: Math.max(top + 140, 360), bottom: VH - 360 };
   ctx.fillStyle = BORDEAUX;
   let px = 84;
-  ctx.font = `800 ${px}px Outfit`;
+  const fam = titleFontFamily();
+  ctx.font = `800 ${px}px ${fam}`;
   while (px > 46 && wrapWords(ctx, d.title, MAXW).length * px * 1.18 > area.bottom - area.top) {
     px -= 2;
-    ctx.font = `800 ${px}px Outfit`;
+    ctx.font = `800 ${px}px ${fam}`;
   }
   const lh = Math.round(px * 1.18);
   const lines = wrapWords(ctx, d.title, MAXW).length;
@@ -167,7 +172,7 @@ function dataPage(ctx, d, images, n, total) {
     const per = items.length ? avail / items.length : 0;
     items.forEach((t, i) => {
       ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
-      ctx.fillRect(PAD, y + 8, 18, 18);
+      drawBullet(ctx, PAD, y + 8, 18, ctx.fillStyle);
       const b = fitBlock(ctx, t, 600, 44, 28, per - 30, 1.3, MAXW - 50);
       ctx.fillStyle = INK;
       drawParagraph(ctx, b.text, PAD + 50, y + b.px * 0.8, MAXW - 50, b.lh, false, b.maxLines);
@@ -242,7 +247,8 @@ export function planCarousel(post) {
 }
 
 /** Renders each carousel page on its own canvas (created with `makeCanvas`). */
-export function renderCarousel(post, images, makeCanvas) {
+export function renderCarousel(post, images, makeCanvas, template) {
+  if (template !== undefined) applyTemplate(template);
   const lang = langOf(post);
   L = CL[lang];
   setRenderLang(lang);

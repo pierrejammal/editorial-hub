@@ -5,7 +5,7 @@ import { jpegsToPdf } from "@/lib/pdf";
 import { X, FileDown, Loader2 } from "lucide-react";
 
 // Preview of the LinkedIn carousel pages + PDF download (LinkedIn: "Ajouter un document").
-export const CarouselDialog = ({ post, images, onClose }) => {
+export const CarouselDialog = ({ post, images, template, onClose }) => {
   const [pages, setPages] = useState([]);
   const [busy, setBusy] = useState(false);
 
@@ -15,7 +15,7 @@ export const CarouselDialog = ({ post, images, onClose }) => {
         const c = document.createElement("canvas");
         c.width = w; c.height = h;
         return c;
-      });
+      }, template);
       setPages(canvases.map((c) => ({
         preview: c.toDataURL("image/jpeg", 0.7),
         full: c.toDataURL("image/jpeg", 0.92),

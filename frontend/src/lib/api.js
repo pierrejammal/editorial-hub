@@ -74,3 +74,6 @@ export const deletePost = (id) => http.delete(`/posts/${id}`).then((r) => r.data
 export const duplicatePost = (id) => http.post(`/posts/${id}/duplicate`).then((r) => r.data);
 
 export const translatePost = (content) => http.post("/translate", { content }, { timeout: 120000 }).then((r) => r.data);
+
+export const getTemplate = () => http.get("/settings/template").then((r) => r.data);
+export const saveTemplate = (t) => http.put("/settings/template", t).then((r) => r.data);

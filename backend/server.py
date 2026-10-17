@@ -1264,6 +1264,28 @@ async def delete_post(post_id: str):
     return {"ok": True}
 
 
+TEMPLATE_KEYS = {"background", "accent", "titles", "secondary", "text", "lines", "bannerText", "bannerShape",
+                 "bulletShape", "ruleStyle", "titleFont", "showDate", "showSignature", "signature"}
+
+
+@api_router.get("/settings/template")
+async def get_template():
+    """House template of the visual (colours, banner, shapes…); {} = FORSIDES defaults."""
+    doc = await db.settings.find_one({"_id": "template"}) or {}
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.put("/settings/template")
+async def put_template(req: Dict[str, Any]):
+    doc = {k: v for k, v in (req or {}).items() if k in TEMPLATE_KEYS and isinstance(v, (str, bool))}
+    for k, v in list(doc.items()):
+        if isinstance(v, str):
+            doc[k] = v.strip()[:60]
+    await db.settings.replace_one({"_id": "template"}, {"_id": "template", **doc}, upsert=True)
+    return doc
+
+
 @api_router.get("/settings/style")
 async def get_style():
     return await load_style()

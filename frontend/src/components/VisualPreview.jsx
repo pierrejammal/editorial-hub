@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import { VisualTextEditor } from "@/components/VisualTextEditor";
+import { TemplateEditor } from "@/components/TemplateEditor";
 import { CarouselDialog } from "@/components/CarouselDialog";
 import {
   renderVisual, loadImage, sourceLogoSrc, hasChart, VW, VH, FONT_SET,
@@ -19,15 +20,15 @@ import {
   Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal, Maximize2, X,
 } from "lucide-react";
 
-const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, label }) => {
+const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, label, template }) => {
   const ref = useRef(null);
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
     // a drawing bug must never crash the whole page: log it and keep the app usable
-    try { renderVisual(c.getContext("2d"), { post, version, images }); } catch (e) { console.error("concept render failed", e); }
+    try { renderVisual(c.getContext("2d"), { post, version, images, template }); } catch (e) { console.error("concept render failed", e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [post.visual, post.meta, post.editorial, images, fontsReady, version]);
+  }, [post.visual, post.meta, post.editorial, images, fontsReady, version, template]);
   return (
     <button
       type="button"
@@ -49,6 +50,7 @@ const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, lab
 export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, controlsTarget }) => {
   const studio = useStudio();
   const post = postProp || studio.post;
+  const template = studio.template;
   const updateVisual = onVisualChange || studio.updateVisual;
 
   const canvasRef = useRef(null);
@@ -113,7 +115,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
     const c = canvasRef.current;
     if (!c) return;
     try {
-      renderVisual(c.getContext("2d"), { post: localPost, version, images });
+      renderVisual(c.getContext("2d"), { post: localPost, version, images, template });
     } catch (e) {
       console.error("visual render failed", e); // a drawing bug must never crash the whole page
       return;
@@ -127,7 +129,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
       } catch (e) { /* tainted */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, Boolean(controlsTarget)]);
+  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, Boolean(controlsTarget), template]);
 
   const download = () => {
     try {
@@ -170,7 +172,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
           </p>
           <div className={`grid gap-3 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
             {formats.map((f, i) => (
-              <ConceptThumb key={f} post={localPost} version={f} images={images} fontsReady={fontsReady}
+              <ConceptThumb key={f} post={localPost} version={f} images={images} fontsReady={fontsReady} template={template}
                 active={version === f} onChoose={() => chooseConcept(f)} label={`Concept ${i + 1} · ${CONCEPT_LABELS[f]}`} />
             ))}
           </div>
@@ -191,6 +193,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
       </div>
 
       <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual} />
+
+      <TemplateEditor />
 
       <div className="flex flex-wrap gap-2">
         <button data-testid="visual-upload-logo" onClick={() => logoInput.current?.click()}
@@ -310,7 +314,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
           document.body
         )}
         {showCarousel && createPortal(
-          <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />,
+          <CarouselDialog post={localPost} images={images} template={template} onClose={() => setShowCarousel(false)} />,
           document.body
         )}
       </section>
@@ -358,7 +362,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
         <div className="border-t border-slate-100 pt-3">{actions}</div>
       </div>
 
-      {showCarousel && <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />}
+      {showCarousel && <CarouselDialog post={localPost} images={images} template={template} onClose={() => setShowCarousel(false)} />}
     </section>
   );
 };

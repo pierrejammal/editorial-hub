@@ -4,12 +4,69 @@
 export const VW = 1200;
 export const VH = 1500;
 const PAD = 66;
-const BLUSH = "#F7E8E4";
-const BRICK = "#C0453A";
-const BORDEAUX = "#7A1E1E";
-const CORAL = "#E7A390";
-const INK = "#1b1b1b";
-const DOT = "#EBC7BD";
+
+// ---------- Template (editable live in "Personnaliser le modèle") ----------
+export const DEFAULT_TEMPLATE = {
+  background: "#F7E8E4", // fond
+  accent: "#C0453A",     // bandeau, puces, chiffres
+  titles: "#7A1E1E",     // titres, signature
+  secondary: "#E7A390",  // couleur secondaire
+  text: "#1b1b1b",       // texte courant
+  lines: "#EBC7BD",      // filets et séparateurs
+  bannerText: "NEWS",
+  bannerShape: "rect",   // rect | rounded | pill | underline
+  bulletShape: "square", // square | circle | dash
+  ruleStyle: "bar",      // bar | thin | none
+  titleFont: "Outfit",   // Outfit | Playfair Display
+  showDate: true,
+  showSignature: true,
+  signature: "For you, by your side",
+};
+// Live bindings: carouselRender imports these and sees the updated values.
+let BLUSH = DEFAULT_TEMPLATE.background;
+let BRICK = DEFAULT_TEMPLATE.accent;
+let BORDEAUX = DEFAULT_TEMPLATE.titles;
+let CORAL = DEFAULT_TEMPLATE.secondary;
+let INK = DEFAULT_TEMPLATE.text;
+let DOT = DEFAULT_TEMPLATE.lines;
+let TPL = { ...DEFAULT_TEMPLATE };
+const HEX = /^#[0-9a-f]{3,8}$/i;
+
+/** Applies a template (missing or invalid values fall back to the FORSIDES defaults). */
+export function applyTemplate(t) {
+  const m = { ...DEFAULT_TEMPLATE, ...(t || {}) };
+  for (const k of ["background", "accent", "titles", "secondary", "text", "lines"]) {
+    if (!HEX.test(String(m[k]))) m[k] = DEFAULT_TEMPLATE[k];
+  }
+  TPL = m;
+  BLUSH = m.background; BRICK = m.accent; BORDEAUX = m.titles; CORAL = m.secondary; INK = m.text; DOT = m.lines;
+}
+export const currentTemplate = () => TPL;
+export const titleFontFamily = () => (TPL.titleFont === "Playfair Display" ? "'Playfair Display'" : "Outfit");
+
+// bullets in front of points / figure lists, in the template's shape
+function drawBullet(ctx, x, y, size, color) {
+  ctx.fillStyle = color;
+  if (TPL.bulletShape === "circle") {
+    ctx.beginPath();
+    ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (TPL.bulletShape === "dash") {
+    ctx.fillRect(x - size * 0.2, y + size * 0.38, size * 1.4, size * 0.26);
+  } else {
+    ctx.fillRect(x, y, size, size);
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
 
 // ---------- Language of the visual (French by default, English for "Version anglaise") ----------
 const DICT = {
@@ -132,10 +189,11 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, dra
 function drawTitle(ctx, title, top, size, lineH, maxLines) {
   const maxW = VW - PAD * 2;
   let px = size;
-  ctx.font = `800 ${px}px Outfit`;
+  const fam = titleFontFamily();
+  ctx.font = `800 ${px}px ${fam}`;
   while (px > 34 && wrapWords(ctx, title, maxW).length > maxLines) {
     px -= 2;
-    ctx.font = `800 ${px}px Outfit`;
+    ctx.font = `800 ${px}px ${fam}`;
   }
   return drawParagraph(ctx, title, PAD, top, maxW, Math.round((lineH * px) / size), true, maxLines);
 }
@@ -178,6 +236,12 @@ function drawLabel(ctx, text, x, y) {
 }
 
 function drawRule(ctx, y) {
+  if (TPL.ruleStyle === "none") return;
+  if (TPL.ruleStyle === "thin") {
+    ctx.fillStyle = DOT;
+    ctx.fillRect(PAD, y + 1, VW - PAD * 2, 2);
+    return;
+  }
   ctx.fillStyle = BRICK;
   ctx.fillRect(PAD, y, 90, 5);
   ctx.fillStyle = DOT;
@@ -302,7 +366,7 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
     const room = linesLeft(40 * s, 46 * s);
     if (room < 1) return; // no space left: skip the block rather than overlapping the footer
     ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
-    ctx.fillRect(PAD, y - 6, 14, 14);
+    drawBullet(ctx, PAD, y - 6, 14, ctx.fillStyle);
     drawLabel(ctx, p.label.toUpperCase(), PAD + 40, y);
     ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
     ctx.font = `500 ${Math.round(30 * s)}px Outfit`;
@@ -363,7 +427,7 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
         extras.forEach((d, i) => {
           if (draw) {
             ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
-            ctx.fillRect(leftX, y + 14 * s, 10 * s, 10 * s);
+            drawBullet(ctx, leftX, y + 14 * s, 10 * s, ctx.fillStyle);
             ctx.fillStyle = INK;
           }
           y = drawParagraph(ctx, d, leftX + 26 * s, y + 24 * s, leftW - 26 * s, 34 * s, false, 3, draw) + 10 * s;
@@ -652,34 +716,52 @@ export function drawHeader(ctx, post, images) {
   ctx.fillStyle = BLUSH;
   ctx.fillRect(0, 0, VW, VH);
 
-  // NEWS slab
+  // banner (NEWS by default) in the template's shape
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  ctx.font = "118px Anton";
-  const label = "NEWS";
-  const tw = ctx.measureText(label).width;
+  const label = String(TPL.bannerText || "").trim().slice(0, 24);
   const padX = 22;
   const rectY = 52;
   const rectH = 128;
-  ctx.fillStyle = BRICK;
-  ctx.fillRect(PAD, rectY, tw + padX * 2, rectH);
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.28)";
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetX = 3;
-  ctx.shadowOffsetY = 4;
-  ctx.fillStyle = "#fff";
-  ctx.fillText(label, PAD + padX, rectY + rectH - 26);
-  ctx.restore();
-  const bannerRight = PAD + tw + padX * 2;
+  let bannerRight = PAD;
+  if (label) {
+    // long words get a smaller font so the banner never runs into the logos
+    const px = fitFontSize(ctx, label, "Anton", 118, 560, 60);
+    const tw = ctx.measureText(label).width;
+    const w = tw + padX * 2;
+    const shape = TPL.bannerShape;
+    if (shape === "underline") {
+      ctx.fillStyle = BRICK;
+      ctx.fillText(label, PAD, rectY + rectH - 26);
+      ctx.fillRect(PAD, rectY + rectH - 6, tw, 10);
+      bannerRight = PAD + tw;
+    } else {
+      ctx.fillStyle = BRICK;
+      if (shape === "rounded") { roundRect(ctx, PAD, rectY, w, rectH, 22); ctx.fill(); }
+      else if (shape === "pill") { roundRect(ctx, PAD, rectY, w + 20, rectH, rectH / 2); ctx.fill(); }
+      else ctx.fillRect(PAD, rectY, w, rectH);
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.28)";
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 4;
+      ctx.fillStyle = "#fff";
+      ctx.font = `${px}px Anton`;
+      ctx.fillText(label, PAD + padX + (shape === "pill" ? 10 : 0), rectY + rectH - 26 - (118 - px) * 0.4);
+      ctx.restore();
+      bannerRight = PAD + w + (shape === "pill" ? 20 : 0);
+    }
+  }
   const bannerBottom = rectY + rectH;
 
   // date
-  ctx.fillStyle = INK;
-  ctx.font = "500 32px Outfit";
-  ctx.textAlign = "right";
-  ctx.fillText((post.meta?.date_label || "").toUpperCase(), bannerRight, bannerBottom + 40);
-  ctx.textAlign = "left";
+  if (TPL.showDate) {
+    ctx.fillStyle = INK;
+    ctx.font = "500 32px Outfit";
+    ctx.textAlign = label ? "right" : "left";
+    ctx.fillText((post.meta?.date_label || "").toUpperCase(), label ? Math.max(bannerRight, PAD + 260) : PAD, bannerBottom + 40);
+    ctx.textAlign = "left";
+  }
 
   // FORSIDES logo
   let logoBottom = 60;
@@ -709,12 +791,13 @@ export function drawHeader(ctx, post, images) {
 }
 
 export function drawSignature(ctx) {
-  // signature
+  if (!TPL.showSignature) return;
+  const sig = String(TPL.signature || "").trim();
+  if (!sig) return;
   const y = VH - 78;
   ctx.fillStyle = BORDEAUX;
   ctx.font = "700 44px Caveat";
   ctx.textAlign = "center";
-  const sig = "For you, by your side";
   const sw = ctx.measureText(sig).width;
   ctx.fillText(sig, VW / 2, y);
   ctx.textAlign = "left";
@@ -741,7 +824,8 @@ export function drawSignature(ctx) {
 }
 
 // opts: { post, version, images:{logoImg, sourceLogoImg} }
-export function renderVisual(ctx, { post, version, images }) {
+export function renderVisual(ctx, { post, version, images, template }) {
+  if (template !== undefined) applyTemplate(template);
   const v = post.visual || {};
   const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
   setRenderLang(langOf(post));
@@ -757,11 +841,12 @@ export function renderVisual(ctx, { post, version, images }) {
   drawSignature(ctx);
 }
 
-export const FONT_SET = ["120px Anton", "800 60px Outfit", "500 28px Outfit", "700 44px Caveat", "140px Anton"];
+export const FONT_SET = ["120px Anton", "800 60px Outfit", "500 28px Outfit", "700 44px Caveat", "140px Anton",
+  "800 60px 'Playfair Display'"];
 
 // Building blocks shared with the carousel renderer (carouselRender.js)
 export {
-  drawParagraph, drawTitle, drawLabel, drawRule, drawSourceFooter, drawBarChart, drawPieChart,
+  drawParagraph, drawTitle, drawLabel, drawRule, drawSourceFooter, drawBarChart, drawPieChart, drawBullet, roundRect,
   wrapWords, fitSentences, fitFontSize, ellipsize, fmtValue, clean,
   PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT,
 };

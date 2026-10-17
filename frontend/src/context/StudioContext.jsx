@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { getTemplate } from "@/lib/api";
+import { DEFAULT_TEMPLATE } from "@/lib/visualRender";
 
 const StudioContext = createContext(null);
 
@@ -36,6 +38,20 @@ export const StudioProvider = ({ children }) => {
   const [research, setResearch] = usePersisted(KEYS.research, EMPTY_RESEARCH);
   const [compose, setCompose] = usePersisted(KEYS.compose, null); // { text, post } of the free editor
 
+  // Visual template: `template` is what the preview shows (edited live), `savedTemplate` is the
+  // house template stored on the server and shared by the team.
+  const [savedTemplate, setSavedTemplate] = useState(DEFAULT_TEMPLATE);
+  const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
+  useEffect(() => {
+    getTemplate()
+      .then((t) => {
+        const merged = { ...DEFAULT_TEMPLATE, ...(t || {}) };
+        setSavedTemplate(merged);
+        setTemplate(merged);
+      })
+      .catch(() => {});
+  }, []);
+
   const updateCaption = (caption) =>
     setPost((p) => (p ? { ...p, caption } : p));
   const updateQuality = (quality) =>
@@ -55,6 +71,10 @@ export const StudioProvider = ({ children }) => {
         setResearch,
         compose,
         setCompose,
+        template,
+        setTemplate,
+        savedTemplate,
+        setSavedTemplate,
       }}
     >
       {children}
