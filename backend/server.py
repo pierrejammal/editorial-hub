@@ -1080,6 +1080,8 @@ async def caption(req: CaptionReq):
         "analytical": "Réécris le caption dans un registre plus analytique et argumenté.",
         "accessible": "Réécris le caption pour le rendre plus accessible et pédagogique, sans perdre la valeur technique.",
         "change_angle": f"Réécris le caption avec un nouvel angle éditorial: {req.angle}.",
+        "restyle": ("Réécris le caption actuel pour respecter la longueur cible et le ton demandés ci-dessous, "
+                    "en gardant les mêmes faits, chiffres et angle (ne rien ajouter qui ne soit dans le sujet)."),
     }
     instruction = action_map.get(req.action, action_map["generate"])
     prompt = f"""Sujet:

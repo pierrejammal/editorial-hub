@@ -48,16 +48,17 @@ export const CaptionEditor = () => {
     source: post.meta?.source,
   };
 
-  const run = async (action, angle) => {
+  // opts.length / opts.tone: values just picked (state isn't updated yet when called from a click)
+  const run = async (action, angle, opts = {}) => {
     setBusy(action);
     try {
       const { caption } = await regenCaption({
         context: ctx,
-        length,
+        length: opts.length || length,
         action,
         angle,
         current_caption: post.caption,
-        tone: tone || null,
+        tone: (opts.tone !== undefined ? opts.tone : tone) || null,
         lang: post.meta?.lang || "fr",
       });
       updateCaption(caption);
@@ -120,7 +121,13 @@ export const CaptionEditor = () => {
           <button
             key={l.key}
             data-testid={`length-${l.key}`}
-            onClick={() => setLength(l.key)}
+            disabled={Boolean(busy)}
+            title="Réécrire le texte à cette longueur"
+            onClick={() => {
+              if (l.key === length && !post.caption) return;
+              setLength(l.key);
+              if (post.caption) run("restyle", undefined, { length: l.key });
+            }}
             className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
               length === l.key
                 ? "bg-forsides-ink text-white"
@@ -133,7 +140,20 @@ export const CaptionEditor = () => {
       </div>
 
       <div className="mb-3">
-        <ToneSelect value={tone} onChange={setTone} compact testid="caption-tone" />
+        <ToneSelect
+          value={tone}
+          compact
+          testid="caption-tone"
+          onChange={(t) => {
+            setTone(t);
+            if (post.caption && !busy) run("restyle", undefined, { tone: t });
+          }}
+        />
+        {(busy === "restyle") && (
+          <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-forsides-slate">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Réécriture du texte…
+          </p>
+        )}
       </div>
 
       <textarea
