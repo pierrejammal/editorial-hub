@@ -2,37 +2,39 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 const StudioContext = createContext(null);
 
-// The post being edited is kept in the browser tab's session storage, so refreshing
-// the Studio page (or an accidental reload) no longer sends you back to the home page
-// and loses your caption edits.
-const STORAGE_KEY = "forsides.studio.post";
+// Work in progress is kept in the browser tab's session storage, so changing page from the menu,
+// refreshing or an accidental reload never loses the current post, the veille results or the
+// text being written in the free editor.
+const KEYS = { post: "forsides.studio.post", research: "forsides.research", compose: "forsides.compose" };
 
-const readStoredPost = () => {
+const read = (key, fallback) => {
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const raw = window.sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
   } catch {
-    return null;
+    return fallback;
   }
 };
 
-export const StudioProvider = ({ children }) => {
-  const [post, setPost] = useState(readStoredPost);
-  const [research, setResearch] = useState({
-    params: null,
-    topics: [],
-    excluded: [],
-    candidatesCount: 0,
-  });
-
+const usePersisted = (key, fallback) => {
+  const [value, setValue] = useState(() => read(key, fallback));
   useEffect(() => {
     try {
-      if (post) window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(post));
-      else window.sessionStorage.removeItem(STORAGE_KEY);
+      if (value == null) window.sessionStorage.removeItem(key);
+      else window.sessionStorage.setItem(key, JSON.stringify(value));
     } catch {
       // storage full or blocked (private mode): the app still works, just without restore
     }
-  }, [post]);
+  }, [key, value]);
+  return [value, setValue];
+};
+
+const EMPTY_RESEARCH = { params: null, topics: [], excluded: [], candidatesCount: 0 };
+
+export const StudioProvider = ({ children }) => {
+  const [post, setPost] = usePersisted(KEYS.post, null);
+  const [research, setResearch] = usePersisted(KEYS.research, EMPTY_RESEARCH);
+  const [compose, setCompose] = usePersisted(KEYS.compose, null); // { text, post } of the free editor
 
   const updateCaption = (caption) =>
     setPost((p) => (p ? { ...p, caption } : p));
@@ -51,6 +53,8 @@ export const StudioProvider = ({ children }) => {
         updateVisual,
         research,
         setResearch,
+        compose,
+        setCompose,
       }}
     >
       {children}

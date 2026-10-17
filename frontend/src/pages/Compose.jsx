@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useStudio } from "@/context/StudioContext";
 import { toast } from "sonner";
 import { BrandHeader } from "@/components/BrandHeader";
 import { VisualPreview } from "@/components/VisualPreview";
@@ -15,16 +16,20 @@ const dateLabel = () => {
 const derive = (t) => (t.split("\n").find((l) => l.trim().length > 0) || "").trim().slice(0, 90);
 
 const Compose = () => {
-  const [text, setText] = useState("");
+  const { compose, setCompose } = useStudio();
+  const [text, setText] = useState(compose?.text || "");
   const [busy, setBusy] = useState(false);
   const [thumb, setThumb] = useState("");
-  const [post, setPost] = useState({
+  const [post, setPost] = useState(() => compose?.post || {
     meta: { date_label: dateLabel(), source: "" },
     editorial: {},
     visual: { recommended_format: "A", title_short: "" },
     caption: "",
     _lastAuto: "",
   });
+
+  // keep the text and visual when leaving the page (restored on return)
+  useEffect(() => { setCompose({ text, post }); }, [text, post]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onText = (val) => {
     setText(val);
@@ -98,7 +103,24 @@ const Compose = () => {
               <label className="font-mono text-[10px] uppercase tracking-widest text-slate-400">
                 Votre texte LinkedIn
               </label>
-              <span className="font-mono text-xs text-slate-400">{text.length} car.</span>
+              <span className="flex items-center gap-3 font-mono text-xs text-slate-400">
+                {text.length} car.
+                {text && (
+                  <button
+                    type="button"
+                    data-testid="compose-reset"
+                    onClick={() => {
+                      if (!window.confirm("Effacer ce texte et repartir de zéro ?")) return;
+                      setText("");
+                      setPost({ meta: { date_label: dateLabel(), source: "" }, editorial: {},
+                        visual: { recommended_format: "A", title_short: "" }, caption: "", _lastAuto: "" });
+                    }}
+                    className="font-sans font-medium text-forsides-slate hover:text-forsides-red"
+                  >
+                    Nouveau texte
+                  </button>
+                )}
+              </span>
             </div>
             <textarea
               data-testid="compose-textarea"

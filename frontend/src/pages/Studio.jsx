@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { BrandHeader } from "@/components/BrandHeader";
 import { WorkflowStepper } from "@/components/WorkflowStepper";
@@ -10,7 +10,9 @@ import { PostActions } from "@/components/PostActions";
 import { FactCheckPanel } from "@/components/FactCheckPanel";
 import { EnglishVersionButton } from "@/components/EnglishVersionButton";
 import { useStudio } from "@/context/StudioContext";
-import { ArrowLeft } from "lucide-react";
+import { savePost } from "@/lib/api";
+import { buildSavePayload } from "@/lib/postPayload";
+import { ArrowLeft, Check, Loader2, CloudOff } from "lucide-react";
 
 const Studio = () => {
   const { post, setPost } = useStudio();
@@ -21,6 +23,29 @@ const Studio = () => {
   useEffect(() => {
     if (!post) nav("/");
   }, [post, nav]);
+
+  // Autosave: every change of a saved post is written to "Mes posts" 1.5 s after the last edit,
+  // so leaving the Studio or generating another post never loses the work.
+  const [saveState, setSaveState] = useState("idle"); // idle | pending | saved | error
+  const thumbRef = useRef(thumb);
+  thumbRef.current = thumb;
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (!post?.id) return undefined;
+    if (firstRun.current) { firstRun.current = false; return undefined; }
+    setSaveState("pending");
+    const t = setTimeout(async () => {
+      try {
+        await savePost(buildSavePayload(post, {
+          thumb: thumbRef.current, origin: post.origin || "studio", scheduled_at: post.scheduled_at,
+        }));
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [post]);
 
   if (!post) return null;
   const meta = post.meta || {};
@@ -37,6 +62,13 @@ const Studio = () => {
           >
             <ArrowLeft className="h-4 w-4" /> Retour
           </Link>
+          {post.id && (
+            <span data-testid="autosave-state" className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+              {saveState === "pending" && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Enregistrement…</>}
+              {saveState === "error" && <><CloudOff className="h-3.5 w-3.5 text-forsides-red" /> Enregistrement automatique impossible, utilisez « Enregistrer »</>}
+              {(saveState === "saved" || saveState === "idle") && <><Check className="h-3.5 w-3.5 text-emerald-600" /> Enregistré dans Mes posts</>}
+            </span>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <div className="hidden lg:block">
               <WorkflowStepper active={7} />

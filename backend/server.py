@@ -553,6 +553,15 @@ def apply_signature(caption: str, style: Dict[str, Any]) -> str:
 
 
 # ---------- Core logic ----------
+async def store_generated(data: Dict[str, Any], origin: str) -> None:
+    """Every generated post goes straight into "Mes posts" as a draft, so leaving the Studio
+    (or closing the tab) never loses it."""
+    now = datetime.now(timezone.utc).isoformat()
+    title = (data.get("visual") or {}).get("title_short") or (data.get("meta") or {}).get("topic") or "Post FORSIDES"
+    data.update({"saved": True, "title": title, "origin": origin, "updated_at": now})
+    await db.posts.insert_one({**data, "created_at": now})
+
+
 async def _noop_progress(step: str):
     return None
 
@@ -597,7 +606,7 @@ CONTENU:
     if not data.get("sources"):
         data["sources"] = [{"title": scraped["site_name"], "url": req.url}]
     data["id"] = str(uuid.uuid4())
-    await db.posts.insert_one({**data, "created_at": datetime.now(timezone.utc).isoformat()})
+    await store_generated(data, "analyze")
     data.pop("_id", None)
     return data
 
@@ -934,7 +943,7 @@ Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('s
     if not data.get("sources"):
         data["sources"] = [{"title": t.get("source", ""), "url": source_url}]
     data["id"] = str(uuid.uuid4())
-    await db.posts.insert_one({**data, "created_at": datetime.now(timezone.utc).isoformat()})
+    await store_generated(data, "research")
     data.pop("_id", None)
     return data
 

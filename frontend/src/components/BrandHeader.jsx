@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Settings2 } from "lucide-react";
+import { Menu, X, Settings2, FilePen } from "lucide-react";
+import { useStudio } from "@/context/StudioContext";
 
 const LINKS = [
   { to: "/analyze", label: "Analyser un lien", testid: "nav-analyze" },
@@ -13,6 +14,9 @@ const LINKS = [
 export const BrandHeader = () => {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const { post } = useStudio() || {};
+  // way back to the post being edited, from any page
+  const current = post && pathname !== "/studio" ? (post.visual?.title_short || post.meta?.topic || "Post en cours") : null;
 
   useEffect(() => setOpen(false), [pathname]); // close the mobile menu after navigating
 
@@ -41,6 +45,16 @@ export const BrandHeader = () => {
 
         {/* full menu on large screens */}
         <nav className="hidden items-center gap-1 text-sm lg:flex">
+          {current && (
+            <Link
+              to="/studio"
+              data-testid="nav-current-post"
+              title={current}
+              className="mr-2 inline-flex max-w-52 items-center gap-1.5 rounded-full border border-forsides-red/40 bg-white px-3 py-1.5 font-semibold text-forsides-red transition-colors hover:bg-forsides-red hover:text-white"
+            >
+              <FilePen className="h-4 w-4 shrink-0" /> <span className="truncate">Post en cours</span>
+            </Link>
+          )}
           {LINKS.map((l) => (
             <Link key={l.to} to={l.to} data-testid={l.testid} className={linkCls(l.to)}>
               {l.label}
@@ -74,6 +88,11 @@ export const BrandHeader = () => {
 
       {open && (
         <nav data-testid="nav-mobile" className="border-t border-slate-200/70 bg-forsides-cream px-4 pb-4 pt-2 lg:hidden">
+          {current && (
+            <Link to="/studio" data-testid="nav-current-post-mobile" className="mb-1 block rounded-lg bg-white px-4 py-3 text-base font-semibold text-forsides-red ring-1 ring-forsides-red/30">
+              ← Post en cours : <span className="font-normal">{current}</span>
+            </Link>
+          )}
           {LINKS.map((l) => (
             <Link key={l.to} to={l.to} data-testid={`${l.testid}-mobile`} className={linkCls(l.to, true)}>
               {l.label}
