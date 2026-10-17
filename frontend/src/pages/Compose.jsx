@@ -88,7 +88,7 @@ const Compose = () => {
             post={post}
             thumb={thumb}
             origin="compose"
-            onSaved={(id) => setPost((p) => ({ ...p, id }))}
+            onSaved={(id, scheduled_at) => setPost((p) => ({ ...p, id, scheduled_at }))}
           />
         </div>
 

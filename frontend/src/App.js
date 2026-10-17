@@ -9,6 +9,7 @@ import Compose from "@/pages/Compose";
 import Studio from "@/pages/Studio";
 import History from "@/pages/History";
 import Calendar from "@/pages/Calendar";
+import Settings from "@/pages/Settings";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
             <Route path="/compose" element={<Compose />} />
             <Route path="/history" element={<History />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="/studio" element={<Studio />} />
           </Routes>
         </BrowserRouter>

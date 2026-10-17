@@ -11,6 +11,24 @@ const CORAL = "#E7A390";
 const INK = "#1b1b1b";
 const DOT = "#EBC7BD";
 
+// ---------- Language of the visual (French by default, English for "Version anglaise") ----------
+const DICT = {
+  fr: {
+    essential: "L'ESSENTIEL", figures: "LES CHIFFRES", atSource: "À LA SOURCE", source: "SOURCE",
+    deadline: "échéance à retenir", whatChanges: "Ce qui change", whyImportant: "Pourquoi c'est important",
+    takeaway: "À retenir", keyPoint: "Point clé", note: "À noter", also: "Et aussi", locale: "fr-FR",
+  },
+  en: {
+    essential: "IN A NUTSHELL", figures: "KEY FIGURES", atSource: "FROM THE SOURCE", source: "SOURCE",
+    deadline: "key deadline", whatChanges: "What changes", whyImportant: "Why it matters",
+    takeaway: "Key takeaway", keyPoint: "Key point", note: "Worth noting", also: "Also", locale: "en-GB",
+  },
+};
+let LANG = "fr";
+export const langOf = (post) => (post?.meta?.lang === "en" ? "en" : "fr");
+export const setRenderLang = (lang) => { LANG = lang === "en" ? "en" : "fr"; };
+export const T = (key, lang = LANG) => (DICT[lang] || DICT.fr)[key];
+
 export const loadImage = (src) =>
   new Promise((resolve) => {
     if (!src) return resolve(null);
@@ -171,6 +189,7 @@ const firstSentences = (text, n) => {
 
 // Resolves what the visual says: résumé + 3 analysis points + source line. Never empty.
 export function resolveContent(post, title) {
+  const lg = langOf(post);
   const v = post.visual || {};
   const ed = post.editorial || {};
   const m = post.meta || {};
@@ -180,20 +199,20 @@ export function resolveContent(post, title) {
   const summary = pick(v.subtitle, ed.fact, m.summary, post.summary, firstSentences(post.caption, 2));
 
   let points = [
-    { label: "Ce qui change", text: clean(ed.what_changes) },
-    { label: "Pourquoi c'est important", text: clean(ed.why_important) },
-    { label: "À retenir", text: clean(ed.insight) || clean(v.insight_line) },
+    { label: T("whatChanges", lg), text: clean(ed.what_changes) },
+    { label: T("whyImportant", lg), text: clean(ed.why_important) },
+    { label: T("takeaway", lg), text: clean(ed.insight) || clean(v.insight_line) },
   ].filter((p) => p.text && p.text !== summary && p.text !== t);
   if (!points.length) {
     points = (v.data_points || []).map(clean).filter(Boolean).slice(0, 3)
-      .map((text, i) => ({ label: ["Point clé", "À noter", "À retenir"][i], text }));
+      .map((text, i) => ({ label: [T("keyPoint", lg), T("note", lg), T("takeaway", lg)][i], text }));
   }
   if (!points.length && clean(v.insight_line) && clean(v.insight_line) !== summary) {
-    points = [{ label: "À retenir", text: clean(v.insight_line) }];
+    points = [{ label: T("takeaway", lg), text: clean(v.insight_line) }];
   }
   if (!points.length && summary && summary === firstSentences(post.caption, 2)) {
     const rest = clean(post.caption).replace(/\s+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean).slice(2, 5);
-    points = rest.filter((x) => x.length > 25).map((text, i) => ({ label: ["À noter", "Et aussi", "À retenir"][i], text }));
+    points = rest.filter((x) => x.length > 25).map((text, i) => ({ label: [T("note", lg), T("also", lg), T("takeaway", lg)][i], text }));
   }
 
   const source = clean(m.source);
@@ -205,7 +224,7 @@ export function resolveContent(post, title) {
   if (typeof cu.summary === "string") auto.summary = clean(cu.summary);
   if (Array.isArray(cu.points)) {
     auto.points = cu.points
-      .map((p) => ({ label: clean(p.label) || "À retenir", text: clean(p.text) }))
+      .map((p) => ({ label: clean(p.label) || T("takeaway", lg), text: clean(p.text) }))
       .filter((p) => p.text);
   }
   return auto;
@@ -271,7 +290,7 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
   let y = top;
   const linesLeft = (lineH, offset) => Math.floor((bottom - y - offset) / lineH);
   if (content.summary) {
-    drawLabel(ctx, "L'ESSENTIEL", PAD, y);
+    drawLabel(ctx, T("essential"), PAD, y);
     ctx.fillStyle = INK;
     ctx.font = `400 ${Math.round(31 * s)}px Outfit`;
     y = drawParagraph(ctx, content.summary, PAD, y + 44 * s, maxW, 44 * s, true, Math.min(6, linesLeft(44 * s, 44 * s))) + gap;
@@ -331,11 +350,11 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
         if (draw) ctx.fillStyle = CORAL;
         ctx.font = `${Math.round(84 * s)}px Anton`;
         const dy = drawParagraph(ctx, String(v.important_date), leftX, y + 60 * s, leftW, 78 * s, false, 2, draw);
-        if (draw) { ctx.fillStyle = INK; ctx.font = `500 ${Math.round(26 * s)}px Outfit`; ctx.fillText("échéance à retenir", leftX, dy + 10 * s); }
+        if (draw) { ctx.fillStyle = INK; ctx.font = `500 ${Math.round(26 * s)}px Outfit`; ctx.fillText(T("deadline"), leftX, dy + 10 * s); }
         y = dy + 50 * s;
       }
       if (extras.length) {
-        if (draw) drawLabel(ctx, "LES CHIFFRES", leftX, y + 40 * s);
+        if (draw) drawLabel(ctx, T("figures"), leftX, y + 40 * s);
         y += 50 * s;
         ctx.font = `500 ${Math.round(25 * s)}px Outfit`;
         extras.forEach((d, i) => {
@@ -361,7 +380,7 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
     const text = content.summary || title;
     const measure = (s) => { ctx.font = `400 ${Math.round(29 * s)}px Outfit`; return 56 * s + drawParagraph(ctx, text, leftX, 0, leftW, 40 * s, false, 12, false); };
     const s = fitScale(measure, bottom - top);
-    drawLabel(ctx, "L'ESSENTIEL", leftX, ly + 10);
+    drawLabel(ctx, T("essential"), leftX, ly + 10);
     ctx.fillStyle = INK;
     ctx.font = `400 ${Math.round(29 * s)}px Outfit`;
     drawParagraph(ctx, text, leftX, ly + 56 * s, leftW, 40 * s, false, Math.floor((bottom - ly - 56 * s) / (40 * s)));
@@ -383,7 +402,7 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
       ry = drawParagraph(ctx, p.text, rx, ry + 56 * s, rightW, 44 * s, false, Math.min(4, room)) + 42;
     });
   } else if (content.sourceTitle || content.source) {
-    drawLabel(ctx, "À LA SOURCE", rx, top + 10);
+    drawLabel(ctx, T("atSource"), rx, top + 10);
     ctx.fillStyle = BRICK;
     ctx.font = "120px Anton";
     ctx.fillText("“", rx, top + 150);
@@ -407,10 +426,15 @@ export const hasChart = (post) => {
   return Boolean(c && (c.type === "bar" || c.type === "pie") && Array.isArray(c.items) && c.items.length >= 2);
 };
 
-const fmtNum = (v) => Number(v).toLocaleString("fr-FR", { maximumFractionDigits: Math.abs(v) < 10 ? 2 : 1 });
+const fmtNum = (v) => Number(v).toLocaleString(T("locale"), { maximumFractionDigits: Math.abs(v) < 10 ? 2 : 1 });
 const fmtValue = (v, unit) => {
   const n = fmtNum(v);
   if (!unit) return n;
+  if (LANG === "en") {
+    if (unit === "%") return `${n}%`;
+    if (unit.startsWith("€")) return `€${n}${unit.slice(1)}`; // €183.4bn
+    return `${n} ${unit}`;
+  }
   return unit === "%" ? `${n} %` : `${n} ${unit}`;
 };
 
@@ -588,7 +612,7 @@ function renderChart(ctx, { v, title, content, headerBottom, footerTop }) {
     y = drawParagraph(ctx, noteTxt, PAD, y + 40, maxW, LH, false, noteLines) - LH + 10;
   }
   if (showSummary && y + sumH <= bottom + 10) {
-    drawLabel(ctx, "L'ESSENTIEL", PAD, y + 36);
+    drawLabel(ctx, T("essential"), PAD, y + 36);
     ctx.fillStyle = INK;
     ctx.font = "400 27px Outfit";
     drawParagraph(ctx, sumTxt, PAD, y + 80, maxW, LH, false, sumLines);
@@ -600,8 +624,8 @@ function drawSourceFooter(ctx, content, top) {
   ctx.fillStyle = DOT;
   ctx.fillRect(PAD, top, VW - PAD * 2, 2);
   ctx.textAlign = "left";
-  drawLabel(ctx, "SOURCE", PAD, top + 36);
-  const labelW = ctx.measureText("SOURCE").width + 40;
+  drawLabel(ctx, T("source"), PAD, top + 36);
+  const labelW = ctx.measureText(T("source")).width + 40;
   let x = PAD + labelW;
   if (content.source) {
     ctx.fillStyle = BORDEAUX;
@@ -717,6 +741,7 @@ export function drawSignature(ctx) {
 export function renderVisual(ctx, { post, version, images }) {
   const v = post.visual || {};
   const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
+  setRenderLang(langOf(post));
   const headerBottom = drawHeader(ctx, post, images);
   const content = resolveContent(post, title);
   const footerTop = VH - 200;

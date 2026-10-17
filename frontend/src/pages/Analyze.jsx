@@ -5,6 +5,8 @@ import { BrandHeader } from "@/components/BrandHeader";
 import { LoadingWorkflow } from "@/components/LoadingWorkflow";
 import { useStudio } from "@/context/StudioContext";
 import { analyzeUrl } from "@/lib/api";
+import { ToneSelect } from "@/components/ToneSelect";
+import { useTone } from "@/lib/tone";
 import { Link2, ArrowRight } from "lucide-react";
 
 const LENGTHS = [
@@ -20,6 +22,8 @@ const Analyze = () => {
   const [url, setUrl] = useState("");
   const [length, setLength] = useState("standard");
   const [loading, setLoading] = useState(false);
+  const [phase, setPhase] = useState(undefined);
+  const [tone, setTone] = useTone();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -28,8 +32,9 @@ const Analyze = () => {
       return;
     }
     setLoading(true);
+    setPhase(undefined);
     try {
-      const data = await analyzeUrl(url.trim(), length);
+      const data = await analyzeUrl(url.trim(), length, { tone, onProgress: setPhase });
       setPost(data);
       nav("/studio");
     } catch (err) {
@@ -42,7 +47,7 @@ const Analyze = () => {
   return (
     <div className="min-h-screen paper-grain">
       <BrandHeader />
-      {loading && <LoadingWorkflow mode="analyze" />}
+      {loading && <LoadingWorkflow mode="analyze" phase={phase} />}
       <main className="mx-auto max-w-3xl px-6 pb-24 pt-16">
         <div className="rise">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-forsides-red/10 text-forsides-red">
@@ -88,6 +93,10 @@ const Analyze = () => {
                 {l.label}
               </button>
             ))}
+          </div>
+
+          <div className="mt-6">
+            <ToneSelect value={tone} onChange={setTone} testid="analyze-tone" />
           </div>
 
           <button

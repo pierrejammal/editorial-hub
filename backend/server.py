@@ -217,7 +217,7 @@ def normalize_chart(data: Dict[str, Any]) -> None:
 HASHTAG_RE = re.compile(r"(?<!\w)#[\wÀ-ÿ]+")
 
 
-def clean_caption(text: str) -> str:
+def clean_caption(text: str, lang: str = "fr") -> str:
     """Deterministic clean-up of the LinkedIn text: LinkedIn shows markdown symbols literally,
     and AI output sometimes has doubled spaces, stray quotes, repeated paragraphs or 6 hashtags."""
     if not text:
@@ -231,7 +231,10 @@ def clean_caption(text: str) -> str:
     t = re.sub(r"^\s*[-*•]\s+", "→ ", t, flags=re.M)   # markdown bullets → LinkedIn-friendly arrows
     t = re.sub(r"[ \t]+", " ", t)
     t = re.sub(r" +([,.])", r"\1", t)                  # "mot ." → "mot."
-    t = re.sub(r"(?<=\w)([;:!?])(?=\s|$)", r" \1", t, flags=re.M)  # French: "mot :" (not 14:30, not URLs)
+    if lang == "en":
+        t = re.sub(r"(?<=\w) +([;:!?])", r"\1", t)  # English: no space before ; : ! ?
+    else:
+        t = re.sub(r"(?<=\w)([;:!?])(?=\s|$)", r" \1", t, flags=re.M)  # French: "mot :" (not 14:30, not URLs)
     t = re.sub(r"\n{3,}", "\n\n", t)
     t = "\n".join(line.strip() for line in t.split("\n"))
 
@@ -354,6 +357,7 @@ def scrape_url(url: str) -> Dict[str, Any]:
 class AnalyzeUrlReq(BaseModel):
     url: str
     length: str = "standard"
+    tone: Optional[str] = None  # None → the house default tone
 
 
 class SearchReq(BaseModel):
@@ -369,6 +373,7 @@ class SearchReq(BaseModel):
 class AnalyzeTopicReq(BaseModel):
     topic: Dict[str, Any]
     length: str = "standard"
+    tone: Optional[str] = None
 
 
 class ComposeReq(BaseModel):
@@ -381,6 +386,8 @@ class CaptionReq(BaseModel):
     action: str = "generate"
     angle: Optional[str] = None
     current_caption: Optional[str] = None
+    tone: Optional[str] = None
+    lang: str = "fr"  # "en" for the English version of a post
 
 
 class QualityReq(BaseModel):
@@ -485,11 +492,77 @@ Caption: {LENGTH_GUIDE.get(length, LENGTH_GUIDE['standard'])} {CAPTION_RULES}
 Le score doit être exigeant et justifié."""
 
 
+# ---------- House style & tone ----------
+TONES = {
+    "standard": "",
+    "expert": ("TON : expert technique. Vocabulaire actuariel et réglementaire précis (SCR, best estimate, "
+               "marge de risque, provisions techniques…), références exactes aux textes, raisonnement argumenté, "
+               "pour un public d'actuaires, de directions financières et des risques."),
+    "pedagogique": ("TON : pédagogique. Explique simplement chaque notion technique, une idée par paragraphe, "
+                    "exemples concrets, sans jargon non expliqué, pour un public large (dirigeants, RH, assurés)."),
+    "alerte": ("TON : alerte réglementaire. Accroche sur l'obligation ou l'échéance, puis ce qui change concrètement, "
+               "qui est concerné, quoi faire et avant quand. Factuel, direct, sans dramatiser."),
+}
+STYLE_DEFAULT = {"tone": "standard", "avoid": [], "signature": "", "hashtags": [], "instructions": ""}
+
+
+class StyleSettings(BaseModel):
+    tone: str = "standard"
+    avoid: List[str] = Field(default_factory=list)
+    signature: str = ""
+    hashtags: List[str] = Field(default_factory=list)
+    instructions: str = ""
+
+
+async def load_style() -> Dict[str, Any]:
+    try:
+        doc = await db.settings.find_one({"_id": "style"}) or {}
+    except Exception:
+        doc = {}
+    doc.pop("_id", None)
+    return {**STYLE_DEFAULT, **doc}
+
+
+def style_block(style: Dict[str, Any], tone: Optional[str]) -> str:
+    """House rules + chosen tone, appended to every writing prompt."""
+    t = tone if tone in TONES else style.get("tone", "standard")
+    parts = [TONES.get(t, "")]
+    avoid = [a.strip() for a in style.get("avoid") or [] if a.strip()]
+    if avoid:
+        parts.append("FORMULES MAISON INTERDITES (ne jamais les employer, même reformulées de près) : "
+                     + " ; ".join(f"« {a} »" for a in avoid) + ".")
+    tags = [h.strip() if h.strip().startswith("#") else "#" + h.strip() for h in style.get("hashtags") or [] if h.strip()]
+    if tags:
+        parts.append("HASHTAGS MAISON à privilégier (2 ou 3 au plus, seulement s'ils sont pertinents) : " + " ".join(tags) + ".")
+    if (style.get("instructions") or "").strip():
+        parts.append("CONSIGNES MAISON : " + style["instructions"].strip())
+    if (style.get("signature") or "").strip():
+        parts.append("N'écris pas de signature : elle est ajoutée automatiquement.")
+    return "\n".join(p for p in parts if p)
+
+
+def apply_signature(caption: str, style: Dict[str, Any]) -> str:
+    """Adds the house signature at the end of the text, just before the hashtag line."""
+    sig = (style.get("signature") or "").strip()
+    if not caption or not sig or sig in caption:
+        return caption
+    lines = caption.rstrip().split("\n")
+    if lines and lines[-1].strip().startswith("#") and HASHTAG_RE.sub("", lines[-1]).strip() == "":
+        return "\n".join(lines[:-1]).rstrip() + f"\n\n{sig}\n\n" + lines[-1]
+    return caption.rstrip() + f"\n\n{sig}"
+
+
 # ---------- Core logic ----------
-async def do_analyze_url(req: AnalyzeUrlReq) -> Dict[str, Any]:
+async def _noop_progress(step: str):
+    return None
+
+
+async def do_analyze_url(req: AnalyzeUrlReq, progress=_noop_progress) -> Dict[str, Any]:
+    await progress("fetch")
     # scrape_url is blocking network code (up to ~30 s): run it in a thread so the server
     # keeps answering other requests (including the job polling) meanwhile.
     scraped = await asyncio.to_thread(scrape_url, req.url.strip())
+    style = await load_style()
     pub_dt = None
     if scraped["published"]:
         try:
@@ -503,11 +576,14 @@ TITRE ORIGINAL: {scraped['title']}
 CONTENU:
 {scraped['text']}
 
-{ANALYSIS_INSTRUCTIONS(req.length)}"""
+{ANALYSIS_INSTRUCTIONS(req.length)}
+{style_block(style, req.tone)}"""
+    await progress("ai")
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    await progress("finalize")
     normalize_scoring(data)
     normalize_chart(data)
-    data["caption"] = clean_caption(data.get("caption") or "")
+    data["caption"] = apply_signature(clean_caption(data.get("caption") or ""), style)
     data["meta"] = data.get("meta") or {}
     data["meta"].update({
         "source": scraped["site_name"],
@@ -623,12 +699,14 @@ async def mark_already_posted(topics: List[Dict[str, Any]]) -> None:
             }
 
 
-async def do_search(req: SearchReq) -> Dict[str, Any]:
+async def do_search(req: SearchReq, progress=_noop_progress) -> Dict[str, Any]:
+    await progress("news")
     q = req.topic
     if req.institutions:
         q = f"{q} {req.institutions}"
     rss = f"https://news.google.com/rss/search?q={requests.utils.quote(q)}&hl=fr&gl=FR&ceid=FR:fr"
     feed = await asyncio.to_thread(fetch_feed, rss)
+    await progress("filter")
     candidates = []
     competitors = req.competitors if req.competitors is not None else DEFAULT_COMPETITORS
     blocked = 0
@@ -666,7 +744,9 @@ Renvoie STRICTEMENT ce JSON, champs courts (summary 2 phrases max, why_attention
     "company_focus": true si le sujet porte principalement sur une entreprise ou un cabinet en particulier, sinon false}}
 ]}}
 N'invente rien: appuie-toi sur les titres/sources/snippets fournis."""
+    await progress("ai")
     data = await llm_json(EDITORIAL_SYSTEM, prompt, FAST_MODEL)
+    await progress("finalize")
     topics = [t for t in (data.get("topics") or []) if isinstance(t, dict) and t.get("title")]
     kept = []
     for t in topics:
@@ -796,11 +876,13 @@ def fetch_topic_article(url: str) -> Optional[Dict[str, Any]]:
     return {**scraped, "url": real}
 
 
-async def do_analyze_topic(req: AnalyzeTopicReq) -> Dict[str, Any]:
+async def do_analyze_topic(req: AnalyzeTopicReq, progress=_noop_progress) -> Dict[str, Any]:
     t = req.topic
+    await progress("fetch")
     # Read the actual article (not just the Google News headline + snippet) so the post can use
     # its figures, quotes and details, exactly like "Analyser un lien".
     article = await asyncio.to_thread(fetch_topic_article, t.get("source_url", ""))
+    style = await load_style()
     if article:
         source_block = f"""ARTICLE COMPLET (lu sur {article['url']}):
 TITRE ORIGINAL: {article['title']}
@@ -825,11 +907,14 @@ SECTEUR: {t.get('sector', '')}
 {source_block}
 
 {ANALYSIS_INSTRUCTIONS(req.length)}
+{style_block(style, req.tone)}
 Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('score')})."""
+    await progress("ai")
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    await progress("finalize")
     normalize_scoring(data)
     normalize_chart(data)
-    data["caption"] = clean_caption(data.get("caption") or "")
+    data["caption"] = apply_signature(clean_caption(data.get("caption") or ""), style)
     data["meta"] = data.get("meta") or {}
     source_url = article["url"] if article else t.get("source_url", "")
     data["meta"].update({
@@ -854,7 +939,8 @@ Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('s
     return data
 
 
-async def do_compose(req: ComposeReq) -> Dict[str, Any]:
+async def do_compose(req: ComposeReq, progress=_noop_progress) -> Dict[str, Any]:
+    await progress("ai")
     prompt = f"""Voici un texte destiné à un post LinkedIn (rédigé par l'utilisateur):
 \"\"\"{req.caption}\"\"\"
 
@@ -903,12 +989,21 @@ async def run_job(job_id: str, coro):
         await db.jobs.update_one({"id": job_id}, {"$set": {"status": "error", "detail": "Erreur interne, réessayez."}})
 
 
-async def start_job(coro) -> Dict[str, str]:
+async def start_job(make_coro) -> Dict[str, str]:
+    """make_coro(progress) builds the job; progress("step") records the real current phase,
+    which the loading screen shows instead of a timer."""
     job_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
-    await db.jobs.insert_one({"id": job_id, "status": "pending",
+    await db.jobs.insert_one({"id": job_id, "status": "pending", "step": "start",
                               "created_at": now.isoformat(), "created_dt": now})
-    task = asyncio.create_task(run_job(job_id, coro))
+
+    async def progress(step: str):
+        try:
+            await db.jobs.update_one({"id": job_id}, {"$set": {"step": step}})
+        except Exception:
+            pass  # progress is cosmetic: never fail the job because of it
+
+    task = asyncio.create_task(run_job(job_id, make_coro(progress)))
     _running_tasks.add(task)
     task.add_done_callback(_running_tasks.discard)
     return {"job_id": job_id}
@@ -932,22 +1027,22 @@ async def root():
 
 @api_router.post("/jobs/analyze-url")
 async def job_analyze_url(req: AnalyzeUrlReq):
-    return await start_job(do_analyze_url(req))
+    return await start_job(lambda progress: do_analyze_url(req, progress))
 
 
 @api_router.post("/jobs/search")
 async def job_search(req: SearchReq):
-    return await start_job(do_search(req))
+    return await start_job(lambda progress: do_search(req, progress))
 
 
 @api_router.post("/jobs/analyze-topic")
 async def job_analyze_topic(req: AnalyzeTopicReq):
-    return await start_job(do_analyze_topic(req))
+    return await start_job(lambda progress: do_analyze_topic(req, progress))
 
 
 @api_router.post("/jobs/compose")
 async def job_compose(req: ComposeReq):
-    return await start_job(do_compose(req))
+    return await start_job(lambda progress: do_compose(req, progress))
 
 
 @api_router.get("/jobs/{job_id}")
@@ -968,6 +1063,7 @@ async def get_job(job_id: str):
 @api_router.post("/caption")
 async def caption(req: CaptionReq):
     ctx = req.context
+    style = await load_style()
     action_map = {
         "generate": "Rédige le caption.",
         "regenerate": "Régénère un caption différent, nouvel angle rédactionnel, même sujet.",
@@ -992,9 +1088,49 @@ CAPTION ACTUEL:
 CONSIGNE: {instruction}
 Longueur cible: {LENGTH_GUIDE.get(req.length, LENGTH_GUIDE['standard'])}
 {CAPTION_RULES}
+{style_block(style, req.tone)}
+{ENGLISH_RULE if req.lang == "en" else ""}
 Renvoie UNIQUEMENT le texte du caption, sans guillemets ni commentaire."""
     text = await llm_text(CAPTION_SYSTEM, prompt)
-    return {"caption": clean_caption(text)}
+    return {"caption": apply_signature(clean_caption(text, req.lang), style)}
+
+
+ENGLISH_RULE = (
+    "LANGUE : rédige le caption en ANGLAIS britannique professionnel (et non en français), "
+    "avec les conventions anglaises (decimal point, € before amounts : €4.2bn), en gardant toutes les règles ci-dessus."
+)
+
+
+class TranslateReq(BaseModel):
+    content: Dict[str, Any]
+
+
+TRANSLATE_SYSTEM = (
+    "You are a senior financial translator specialised in insurance, actuarial science, social protection "
+    "and EU regulation (Solvency II, IFRS 17, EIOPA). You translate French LinkedIn content into natural, "
+    "professional British English as a native editor would write it (not word for word). You never add, "
+    "remove or change any fact, figure or date. You answer ONLY with valid JSON."
+)
+
+
+@api_router.post("/translate")
+async def translate(req: TranslateReq):
+    """English version of a post: caption + every text shown on the visual and chart."""
+    prompt = f"""Translate every French string value of this JSON into English and return the SAME JSON structure
+(same keys, same list lengths, same order). Rules:
+- Figures: keep exactly the same values, English formatting (183,4 → 183.4 ; 1 250 → 1,250 ; 4,1 % → 4.1%).
+- Units: Md€ → €bn, M€ → €m, k€ → €k, "ans" → "years", "mois" → "months"; keep % as is.
+- Institutions: use their usual English names (ACPR → ACPR, la DREES → DREES, Sécurité sociale → French Social Security,
+  Cour des comptes → French Court of Audit, France Assureurs → France Assureurs).
+- LinkedIn caption: keep paragraphs, line breaks, arrows and hashtags (translate hashtags only if a common English
+  one exists, e.g. #Assurance → #Insurance). Keep the signature line as is if it is a proper name.
+- Keep empty strings empty. Do not translate keys.
+JSON:
+{json.dumps(req.content, ensure_ascii=False)}"""
+    data = await llm_json(TRANSLATE_SYSTEM, prompt)
+    if isinstance(data.get("caption"), str):
+        data["caption"] = clean_caption(data["caption"], "en")
+    return data
 
 
 @api_router.post("/quality")
@@ -1080,9 +1216,30 @@ async def list_posts():
         {"saved": True},
         {"_id": 0, "id": 1, "title": 1, "caption": 1, "thumbnail": 1, "meta": 1,
          "scoring.total": 1, "scheduled_at": 1, "updated_at": 1, "origin": 1},
-    ).sort("updated_at", -1).limit(100)
-    items = await cursor.to_list(100)
+    ).sort("updated_at", -1).limit(300)
+    items = await cursor.to_list(300)
     return {"posts": items}
+
+
+@api_router.post("/posts/{post_id}/duplicate")
+async def duplicate_post(post_id: str):
+    """Copy a saved post as a new draft (no schedule) to start a new post from it."""
+    doc = await db.posts.find_one({"id": post_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Introuvable")
+    new_id = str(uuid.uuid4())
+    title = doc.get("title") or (doc.get("visual") or {}).get("title_short") or "Post FORSIDES"
+    doc.update({
+        "id": new_id,
+        "title": f"{title} (copie)",
+        "scheduled_at": None,
+        "saved": True,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await db.posts.insert_one(doc)
+    doc.pop("_id", None)
+    return {"id": new_id}
 
 
 @api_router.delete("/posts/{post_id}")
@@ -1091,6 +1248,23 @@ async def delete_post(post_id: str):
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Introuvable")
     return {"ok": True}
+
+
+@api_router.get("/settings/style")
+async def get_style():
+    return await load_style()
+
+
+@api_router.put("/settings/style")
+async def put_style(req: StyleSettings):
+    doc = req.model_dump()
+    doc["tone"] = doc["tone"] if doc["tone"] in TONES else "standard"
+    doc["avoid"] = [a.strip() for a in doc["avoid"] if a.strip()][:40]
+    doc["hashtags"] = [h.strip() for h in doc["hashtags"] if h.strip()][:10]
+    doc["signature"] = doc["signature"].strip()[:300]
+    doc["instructions"] = doc["instructions"].strip()[:1500]
+    await db.settings.update_one({"_id": "style"}, {"$set": doc}, upsert=True)
+    return doc
 
 
 app.include_router(api_router)

@@ -6,6 +6,8 @@ import { LoadingWorkflow } from "@/components/LoadingWorkflow";
 import { TopicCard } from "@/components/TopicCard";
 import { useStudio } from "@/context/StudioContext";
 import { searchTopics, analyzeTopic, getPost } from "@/lib/api";
+import { ToneSelect } from "@/components/ToneSelect";
+import { useTone } from "@/lib/tone";
 import { loadCompetitors, saveCompetitors, parseCompetitors, DEFAULT_COMPETITORS } from "@/lib/competitors";
 import { Search, RotateCcw, SlidersHorizontal } from "lucide-react";
 
@@ -30,6 +32,8 @@ const Research = () => {
   const [competitors, setCompetitors] = useState(loadCompetitors);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(null); // topic being turned into a post
+  const [phase, setPhase] = useState(undefined);
+  const [tone, setTone] = useTone();
 
   const doSearch = async (exclude = []) => {
     if (!topic.trim()) {
@@ -37,6 +41,7 @@ const Research = () => {
       return;
     }
     setLoading(true);
+    setPhase(undefined);
     const params = {
       topic: topic.trim(),
       period,
@@ -45,7 +50,7 @@ const Research = () => {
       max_results: Number(maxResults),
     };
     try {
-      const data = await searchTopics({ ...params, exclude, competitors: parseCompetitors(competitors) });
+      const data = await searchTopics({ ...params, exclude, competitors: parseCompetitors(competitors) }, { onProgress: setPhase });
       setResearch({
         params,
         excludedCompanies: data.excluded_companies || 0,
@@ -74,8 +79,9 @@ const Research = () => {
 
   const generate = async (t) => {
     setGenerating(t); // keep the chosen topic so the loading screen can show it
+    setPhase(undefined);
     try {
-      const data = await analyzeTopic(t, "standard");
+      const data = await analyzeTopic(t, "standard", { tone, onProgress: setPhase });
       setPost(data);
       nav("/studio");
     } catch (err) {
@@ -100,9 +106,9 @@ const Research = () => {
     <div className="min-h-screen paper-grain">
       <BrandHeader />
       {generating ? (
-        <LoadingWorkflow mode="generate" topic={generating} />
+        <LoadingWorkflow mode="generate" topic={generating} phase={phase} />
       ) : (
-        loading && <LoadingWorkflow mode="search" />
+        loading && <LoadingWorkflow mode="search" phase={phase} />
       )}
       <main className="mx-auto max-w-4xl px-6 pb-24 pt-16">
         <div className="rise">
@@ -235,6 +241,10 @@ const Research = () => {
               >
                 <RotateCcw className="h-4 w-4" /> Rafraîchir la sélection
               </button>
+            </div>
+            <div className="mb-5 rounded-xl border border-slate-200/80 bg-white/70 p-4">
+              <ToneSelect value={tone} onChange={setTone} testid="research-tone" />
+              <p className="mt-1.5 text-[11px] text-slate-500">S'applique quand vous cliquez sur « Générer le post ».</p>
             </div>
             <div className="space-y-4">
               {topics.map((t, i) => (

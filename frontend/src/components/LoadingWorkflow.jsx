@@ -1,21 +1,21 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 
-// Each workflow gets its own steps, matching what the server really does.
-// `secs` = roughly when that step starts (based on typical durations), so the
-// screen keeps moving for the whole wait instead of freezing on the last step.
+// Each workflow lists the steps the server really goes through. `phase` is the server phase a step
+// belongs to (the server reports it while working); `after` = seconds into that phase before the
+// step lights up, for the long AI phase that contains several sub-steps.
 const MODES = {
   search: {
     title: "Veille en cours",
     subtitle: "Recherche et sélection des sujets les plus pertinents",
     expected: 45,
     steps: [
-      { label: "Recherche des actualités récentes", secs: 0 },
-      { label: "Collecte des articles et des sources", secs: 4 },
-      { label: "Suppression des doublons", secs: 12 },
-      { label: "Filtrage des sources peu fiables", secs: 20 },
-      { label: "Notation de chaque sujet sur 100", secs: 28 },
-      { label: "Classement des meilleurs sujets", secs: 38 },
+      { label: "Recherche des actualités récentes", phase: "news", after: 0 },
+      { label: "Exclusion des entreprises et des concurrents", phase: "filter", after: 0 },
+      { label: "Suppression des doublons et des sources peu fiables", phase: "ai", after: 0 },
+      { label: "Notation de chaque sujet sur 100", phase: "ai", after: 8 },
+      { label: "Classement des meilleurs sujets", phase: "ai", after: 18 },
+      { label: "Repérage des sujets déjà traités", phase: "finalize", after: 0 },
     ],
   },
   generate: {
@@ -23,12 +23,12 @@ const MODES = {
     subtitle: "Rédaction du post LinkedIn à partir du sujet choisi",
     expected: 50,
     steps: [
-      { label: "Ouverture et lecture de l'article complet", secs: 0 },
-      { label: "Analyse : faits, chiffres, enjeux réglementaires", secs: 10 },
-      { label: "Évaluation détaillée du potentiel (/100)", secs: 19 },
-      { label: "Choix de l'angle éditorial", secs: 26 },
-      { label: "Rédaction du texte LinkedIn", secs: 32 },
-      { label: "Contrôle qualité et préparation du visuel", secs: 42 },
+      { label: "Ouverture et lecture de l'article complet", phase: "fetch", after: 0 },
+      { label: "Analyse : faits, chiffres, enjeux réglementaires", phase: "ai", after: 0 },
+      { label: "Évaluation détaillée du potentiel (/100)", phase: "ai", after: 9 },
+      { label: "Choix de l'angle éditorial", phase: "ai", after: 16 },
+      { label: "Rédaction du texte LinkedIn", phase: "ai", after: 22 },
+      { label: "Contrôle qualité et préparation du visuel", phase: "finalize", after: 0 },
     ],
   },
   analyze: {
@@ -36,19 +36,21 @@ const MODES = {
     subtitle: "Lecture du lien et création du post LinkedIn",
     expected: 45,
     steps: [
-      { label: "Ouverture et lecture de l'article", secs: 0 },
-      { label: "Extraction des faits, chiffres et dates", secs: 8 },
-      { label: "Évaluation détaillée du potentiel (/100)", secs: 17 },
-      { label: "Choix de l'angle éditorial", secs: 24 },
-      { label: "Rédaction du texte LinkedIn", secs: 30 },
-      { label: "Contrôle qualité et préparation du visuel", secs: 39 },
+      { label: "Ouverture et lecture de l'article", phase: "fetch", after: 0 },
+      { label: "Extraction des faits, chiffres et dates", phase: "ai", after: 0 },
+      { label: "Évaluation détaillée du potentiel (/100)", phase: "ai", after: 9 },
+      { label: "Choix de l'angle éditorial", phase: "ai", after: 16 },
+      { label: "Rédaction du texte LinkedIn", phase: "ai", after: 22 },
+      { label: "Contrôle qualité et préparation du visuel", phase: "finalize", after: 0 },
     ],
   },
 };
 
-export const LoadingWorkflow = ({ mode = "analyze", label, topic }) => {
+// phase: the step the server reports ("fetch", "ai"…); undefined until the first report
+export const LoadingWorkflow = ({ mode = "analyze", label, topic, phase }) => {
   const cfg = MODES[mode] || MODES.analyze;
   const [elapsed, setElapsed] = useState(0);
+  const phaseStart = useRef({ phase: undefined, at: 0 });
 
   useEffect(() => {
     const start = Date.now();
@@ -56,13 +58,20 @@ export const LoadingWorkflow = ({ mode = "analyze", label, topic }) => {
     return () => clearInterval(t);
   }, []);
 
+  if (phase !== phaseStart.current.phase) phaseStart.current = { phase, at: elapsed };
+  const inPhase = elapsed - phaseStart.current.at;
+
+  // Current step = the last step of the reported phase whose delay has passed. Never beyond the
+  // server's real phase, never back: the screen only shows what is actually happening.
+  const idxs = cfg.steps.map((s, i) => (s.phase === phase ? i : -1)).filter((i) => i >= 0);
   let step = 0;
-  cfg.steps.forEach((s, i) => {
-    if (elapsed >= s.secs) step = i;
-  });
+  if (idxs.length) {
+    step = idxs[0];
+    idxs.forEach((i) => { if (inPhase >= cfg.steps[i].after) step = i; });
+  }
   const overtime = elapsed > cfg.expected;
-  // Smooth bar that approaches 95% near the expected time and never reaches 100% before the end.
-  const pct = Math.min(95, (elapsed / cfg.expected) * 90 + (overtime ? Math.min(5, (elapsed - cfg.expected) / 6) : 0));
+  // bar: steps done + a little progress inside the current step, never 100 % before the end
+  const pct = Math.min(95, ((step + Math.min(0.9, inPhase / 12)) / cfg.steps.length) * 100);
   const secs = Math.floor(elapsed);
 
   return (

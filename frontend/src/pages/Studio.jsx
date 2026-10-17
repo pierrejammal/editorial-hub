@@ -8,6 +8,7 @@ import { CaptionEditor } from "@/components/CaptionEditor";
 import { VisualPreview } from "@/components/VisualPreview";
 import { PostActions } from "@/components/PostActions";
 import { FactCheckPanel } from "@/components/FactCheckPanel";
+import { EnglishVersionButton } from "@/components/EnglishVersionButton";
 import { useStudio } from "@/context/StudioContext";
 import { ArrowLeft } from "lucide-react";
 
@@ -36,11 +37,13 @@ const Studio = () => {
           >
             <ArrowLeft className="h-4 w-4" /> Retour
           </Link>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="hidden lg:block">
               <WorkflowStepper active={7} />
             </div>
-            <PostActions post={post} thumb={thumb} origin="studio" onSaved={(id) => setPost((p) => ({ ...p, id }))} />
+            <EnglishVersionButton post={post} setPost={setPost} thumb={thumb} />
+            <PostActions post={post} thumb={thumb} origin="studio"
+              onSaved={(id, scheduled_at) => setPost((p) => ({ ...p, id, scheduled_at }))} />
           </div>
         </div>
 
@@ -55,6 +58,9 @@ const Studio = () => {
               <span className="font-mono text-[11px] uppercase tracking-wider text-slate-400">
                 {meta.source}
               </span>
+            )}
+            {meta.lang === "en" && (
+              <span data-testid="studio-lang-en" className="rounded-full bg-forsides-red px-2.5 py-0.5 font-mono text-[10px] font-bold text-white">EN</span>
             )}
             {meta.date_label && (
               <span className="font-mono text-[11px] text-slate-400">· {meta.date_label}</span>

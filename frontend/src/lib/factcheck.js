@@ -1,19 +1,19 @@
 // Figure fact-check: every number and date shown in the post (LinkedIn text, visual, chart)
 // must appear in the source it was written from. Runs in the browser, instantly, on each edit.
 
-const MONTHS = "janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre";
+const MONTHS = "janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|january|february|march|april|may|june|july|august|september|october|november|december";
 
 // number (with French thousands spaces and decimals) + optional unit right after it
 const NUM_RE = new RegExp(
   String.raw`(?<![\p{L}\d.,#/])(\d{1,3}(?:[   ]\d{3})+|\d+)(?:[.,](\d+))?(?![\d])` +
-    String.raw`(\s*(?:%|‰|Md€|Mds€|Mds|Md|milliards?|M€|millions?|k€|milliers|€|points?|pts|ans?|mois|er|e|ème)(?![\p{L}]))?`,
+    String.raw`(\s*(?:%|‰|Md€|Mds€|Mds|Md|milliards?|M€|millions?|k€|milliers|€bn|bn|billions?|€m|m|€k|thousand|€|points?|pts|ans?|years?|mois|months?|er|e|ème|st|nd|rd|th)(?![\p{L}]))?`,
   "giu"
 );
 
 const MULTIPLIERS = [
-  [/^(md€|mds€|mds|md|milliards?)$/i, 1e9],
-  [/^(m€|millions?)$/i, 1e6],
-  [/^(k€|milliers)$/i, 1e3],
+  [/^(md€|mds€|mds|md|milliards?|€bn|bn|billions?)$/i, 1e9],
+  [/^(m€|millions?|€m|m)$/i, 1e6],
+  [/^(k€|milliers|€k|thousand)$/i, 1e3],
 ];
 
 const multiplierOf = (unit) => {
@@ -27,17 +27,20 @@ const IGNORE_BEFORE = /(ifrs|solvabilit[ée]|solvency|b[âa]le|article|art\.|loi
 
 const key = (v) => Math.round(v * 1e6) / 1e6;
 
-export function extractFigures(text) {
+// English texts write 1,250.5 : turn thousands commas into spaces so 1,250 isn't read as 1.25
+const toFrenchDigits = (str) => str.replace(/(\d),(?=\d{3}(?!\d))/g, "$1 ");
+
+export function extractFigures(text, lang = "fr") {
   const out = [];
   if (!text) return out;
-  const str = String(text);
+  const str = lang === "en" ? toFrenchDigits(String(text)) : String(text);
   for (const m of str.matchAll(NUM_RE)) {
     const intPart = m[1].replace(/[   ]/g, "");
     const dec = m[2] || "";
     const unit = (m[3] || "").trim();
     const before = str.slice(Math.max(0, m.index - 14), m.index);
     const after = str.slice(m.index + m[0].length, m.index + m[0].length + 12).toLowerCase();
-    if (/^(er|e|ème)$/i.test(unit)) continue; // "1er", "3e" : ordinals
+    if (/^(er|e|ème|st|nd|rd|th)$/i.test(unit)) continue; // "1er", "3e", "1st" : ordinals
     if (IGNORE_BEFORE.test(before)) continue; // "IFRS 17", "Solvabilité 2", "article 13"
     if (/https?:\/\/\S*$/.test(before)) continue; // inside a URL
     const value = parseFloat(dec ? `${intPart}.${dec}` : intPart);
@@ -109,6 +112,7 @@ function postTexts(post) {
 
 export function runFactCheck(post) {
   const source = post?.source_text || "";
+  const lang = post?.meta?.lang === "en" ? "en" : "fr";
   if (!post || source.replace(/\s+/g, "").length < 40) {
     return { available: false, items: [], missing: 0, rounded: 0, found: 0 };
   }
@@ -124,7 +128,7 @@ export function runFactCheck(post) {
   for (const group of postTexts(post)) {
     for (const t of group.texts) {
       if (!t) continue;
-      for (const f of extractFigures(t)) add(f, group.place, context(t, f.index, f.raw.length));
+      for (const f of extractFigures(t, lang)) add(f, group.place, context(t, f.index, f.raw.length));
     }
   }
   const chart = post.visual?.chart;

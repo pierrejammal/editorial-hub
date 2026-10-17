@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 import { savePost } from "@/lib/api";
 import { runFactCheck } from "@/lib/factcheck";
+import { buildSavePayload } from "@/lib/postPayload";
 import { Save, CalendarClock, Loader2, X } from "lucide-react";
 
 export const PostActions = ({ post, thumb, origin = "studio", onSaved }) => {
@@ -14,21 +15,7 @@ export const PostActions = ({ post, thumb, origin = "studio", onSaved }) => {
   const minWhen = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   const isPast = !!when && new Date(when) <= now;
 
-  const build = (scheduled_at) => ({
-    id: post.id || null,
-    title: post.visual?.title_short || post.meta?.topic || "Post FORSIDES",
-    caption: post.caption || "",
-    thumbnail: thumb || "",
-    meta: post.meta || {},
-    scoring: post.scoring || null,
-    editorial: post.editorial || null,
-    visual: post.visual || null,
-    quality: post.quality || null,
-    sources: post.sources || null,
-    source_text: post.source_text || "",
-    scheduled_at: scheduled_at || null,
-    origin,
-  });
+  const build = (scheduled_at) => buildSavePayload(post, { thumb, origin, scheduled_at });
 
   const doSave = async (scheduled_at) => {
     if (scheduled_at) {
@@ -39,8 +26,9 @@ export const PostActions = ({ post, thumb, origin = "studio", onSaved }) => {
     }
     setSaving(true);
     try {
-      const { id } = await savePost(build(scheduled_at));
-      onSaved?.(id);
+      const keep = scheduled_at || post.scheduled_at || null;
+      const { id } = await savePost(build(keep));
+      onSaved?.(id, keep);
       if (scheduled_at) {
         const d = new Date(scheduled_at);
         toast.success(`Programmé pour le ${d.toLocaleString("fr-FR")} — simulation (LinkedIn non connecté)`);

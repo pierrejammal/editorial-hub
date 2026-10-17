@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { regenCaption, checkQuality } from "@/lib/api";
+import { regenCaption, checkQuality, getStyle } from "@/lib/api";
+import { ToneSelect } from "@/components/ToneSelect";
+import { useTone } from "@/lib/tone";
 import { useStudio } from "@/context/StudioContext";
 import {
   RefreshCw,
@@ -25,7 +27,16 @@ export const CaptionEditor = () => {
   const [length, setLength] = useState("standard");
   const [busy, setBusy] = useState(null);
   const [angleOpen, setAngleOpen] = useState(false);
+  const [tone, setTone] = useTone();
+  const [avoidList, setAvoidList] = useState([]);
   const ed = post.editorial || {};
+
+  useEffect(() => {
+    getStyle().then((s) => setAvoidList(s.avoid || [])).catch(() => {});
+  }, []);
+  // house "formules à éviter" found in the current text (e.g. after a manual edit)
+  const lowCaption = (post.caption || "").toLowerCase();
+  const avoidedFound = avoidList.filter((a) => a && lowCaption.includes(a.toLowerCase()));
 
   const ctx = {
     fact: ed.fact,
@@ -46,6 +57,8 @@ export const CaptionEditor = () => {
         action,
         angle,
         current_caption: post.caption,
+        tone: tone || null,
+        lang: post.meta?.lang || "fr",
       });
       updateCaption(caption);
       toast.success("Caption mis à jour");
@@ -117,6 +130,10 @@ export const CaptionEditor = () => {
             {l.label}
           </button>
         ))}
+      </div>
+
+      <div className="mb-3">
+        <ToneSelect value={tone} onChange={setTone} compact testid="caption-tone" />
       </div>
 
       <textarea
@@ -204,6 +221,12 @@ export const CaptionEditor = () => {
           </span>
         )}
       </div>
+
+      {avoidedFound.length > 0 && (
+        <div data-testid="caption-avoided" className="mt-4 rounded-lg border border-forsides-red/30 bg-forsides-red/5 p-3 text-sm text-forsides-bordeaux">
+          Formule{avoidedFound.length > 1 ? "s" : ""} à éviter (style maison) : {avoidedFound.map((a) => `« ${a} »`).join(", ")}
+        </div>
+      )}
 
       {qLow && (
         <div

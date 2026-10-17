@@ -2,8 +2,23 @@
 import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
-  clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT,
+  clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
 } from "@/lib/visualRender";
+
+const CL = {
+  fr: {
+    swipe: "Faites défiler", source: "Source :", essential: "L'essentiel", figures: "Les chiffres",
+    keyFigures: "Les chiffres clés", deadline: "échéance à retenir", analysis: "Décryptage", takeaway: "À retenir",
+    ctaQ: "Vous avez trouvé ce décryptage utile ?", cta: "Suivez FORSIDES pour ne rien manquer de l'actualité actuarielle.",
+  },
+  en: {
+    swipe: "Swipe", source: "Source:", essential: "In a nutshell", figures: "The figures",
+    keyFigures: "Key figures", deadline: "key deadline", analysis: "Analysis", takeaway: "Key takeaway",
+    ctaQ: "Found this analysis useful?", cta: "Follow FORSIDES for the latest actuarial and insurance news.",
+  },
+};
+let L = CL.fr;
+const TAKEAWAY_RE = /retenir|takeaway/i;
 
 const MAXW = VW - PAD * 2;
 
@@ -51,7 +66,7 @@ function pageCounter(ctx, n, total) {
   ctx.textAlign = "left";
 }
 
-function swipeHint(ctx, label = "Faites défiler") {
+function swipeHint(ctx, label = L.swipe) {
   ctx.fillStyle = BRICK;
   ctx.font = "700 30px Outfit";
   ctx.textAlign = "left";
@@ -85,7 +100,7 @@ function coverPage(ctx, d, images, n, total) {
   if (d.content.source) {
     ctx.fillStyle = "#4a3a36";
     ctx.font = "500 30px Outfit";
-    ctx.fillText(`Source : ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74);
+    ctx.fillText(`${L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74);
   }
   swipeHint(ctx);
   pageCounter(ctx, n, total);
@@ -93,7 +108,7 @@ function coverPage(ctx, d, images, n, total) {
 
 function essentialPage(ctx, d, images, n, total) {
   const top = miniHeader(ctx, images, n, total);
-  bigLabel(ctx, "L'essentiel", top + 90);
+  bigLabel(ctx, L.essential, top + 90);
   let y = top + 170;
   const fig = clean(d.v.key_figure_value);
   if (fig) {
@@ -117,7 +132,7 @@ function dataPage(ctx, d, images, n, total) {
   const top = miniHeader(ctx, images, n, total);
   const chart = d.v.chart;
   if (hasChart(d.post)) {
-    bigLabel(ctx, "Les chiffres", top + 90);
+    bigLabel(ctx, L.figures, top + 90);
     let y = top + 150;
     if (clean(chart.title)) {
       drawLabel(ctx, chart.title.toUpperCase(), PAD, y);
@@ -135,7 +150,7 @@ function dataPage(ctx, d, images, n, total) {
       drawParagraph(ctx, t, PAD, y + h + 70, MAXW, 46, false, 3);
     }
   } else {
-    bigLabel(ctx, "Les chiffres clés", top + 90);
+    bigLabel(ctx, L.keyFigures, top + 90);
     let y = top + 190;
     const items = (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 4);
     const date = clean(d.v.important_date);
@@ -145,7 +160,7 @@ function dataPage(ctx, d, images, n, total) {
       ctx.fillText(date, PAD, y + px * 0.85);
       ctx.fillStyle = INK;
       ctx.font = "500 32px Outfit";
-      ctx.fillText("échéance à retenir", PAD, y + px + 30);
+      ctx.fillText(L.deadline, PAD, y + px + 30);
       y += px + 110;
     }
     const avail = VH - 220 - y;
@@ -183,7 +198,7 @@ function pointsPage(ctx, d, images, n, total, points, heading) {
 
 function takeawayPage(ctx, d, images, n, total) {
   const top = miniHeader(ctx, images, n, total);
-  bigLabel(ctx, "À retenir", top + 90);
+  bigLabel(ctx, L.takeaway, top + 90);
   const text = d.takeaway;
   const area = { top: top + 160, bottom: VH - 470 };
   ctx.fillStyle = BRICK;
@@ -195,10 +210,10 @@ function takeawayPage(ctx, d, images, n, total) {
   drawRule(ctx, VH - 400);
   ctx.fillStyle = INK;
   ctx.font = "600 34px Outfit";
-  ctx.fillText("Vous avez trouvé ce décryptage utile ?", PAD, VH - 320);
+  ctx.fillText(L.ctaQ, PAD, VH - 320);
   ctx.fillStyle = "#4a3a36";
   ctx.font = "400 30px Outfit";
-  ctx.fillText("Suivez FORSIDES pour ne rien manquer de l'actualité actuarielle.", PAD, VH - 270);
+  ctx.fillText(L.cta, PAD, VH - 270);
   drawSignature(ctx);
 }
 
@@ -208,8 +223,8 @@ export function planCarousel(post) {
   const ed = post.editorial || {};
   const title = clean(v.title_short) || clean(ed.fact) || clean(post.meta?.topic);
   const content = resolveContent(post, title);
-  const points = content.points.filter((p) => !/retenir/i.test(p.label));
-  const takeaway = clean(content.points.find((p) => /retenir/i.test(p.label))?.text) ||
+  const points = content.points.filter((p) => !TAKEAWAY_RE.test(p.label));
+  const takeaway = clean(content.points.find((p) => TAKEAWAY_RE.test(p.label))?.text) ||
     clean(ed.insight) || clean(v.insight_line);
   const hasData = hasChart(post) || clean(v.important_date) || (v.data_points || []).filter((x) => clean(x)).length >= 2;
   const d = { post, v, title, content, takeaway };
@@ -219,7 +234,7 @@ export function planCarousel(post) {
   if (hasData) pages.push((ctx, im, n, t) => dataPage(ctx, d, im, n, t));
   if (points.length) {
     // one point per page when there are few pages, otherwise grouped
-    if (points.length <= 2 || pages.length >= 3) pages.push((ctx, im, n, t) => pointsPage(ctx, d, im, n, t, points.slice(0, 3), "Décryptage"));
+    if (points.length <= 2 || pages.length >= 3) pages.push((ctx, im, n, t) => pointsPage(ctx, d, im, n, t, points.slice(0, 3), L.analysis));
     else points.slice(0, 3).forEach((p) => pages.push((ctx, im, n, t) => pointsPage(ctx, d, im, n, t, [p], p.label)));
   }
   if (takeaway) pages.push((ctx, im, n, t) => takeawayPage(ctx, d, im, n, t));
@@ -228,6 +243,9 @@ export function planCarousel(post) {
 
 /** Renders each carousel page on its own canvas (created with `makeCanvas`). */
 export function renderCarousel(post, images, makeCanvas) {
+  const lang = langOf(post);
+  L = CL[lang];
+  setRenderLang(lang);
   const plan = planCarousel(post);
   return plan.map((draw, i) => {
     const c = makeCanvas(VW, VH);
