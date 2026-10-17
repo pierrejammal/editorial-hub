@@ -245,31 +245,50 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
   // left column
   let ly = top;
   if (hasData) {
-    if (v.key_figure_value) {
-      ctx.fillStyle = BRICK;
-      ctx.font = "128px Anton";
-      ctx.fillText(String(v.key_figure_value), leftX, ly + 100);
-      ly += 118;
-      if (v.key_figure_label) {
-        ctx.fillStyle = INK;
-        ctx.font = "500 27px Outfit";
-        ly = drawParagraph(ctx, v.key_figure_label, leftX, ly + 20, leftW, 36, false, 3) + 40;
+    const fig = String(v.key_figure_value || "");
+    const extras = (v.data_points || []).map(clean).filter((d) => d && !(fig && d.includes(fig))).slice(0, 4);
+    const leftCol = (s, draw) => {
+      let y = top;
+      if (fig) {
+        if (draw) { ctx.fillStyle = BRICK; }
+        ctx.font = `${Math.round(128 * s)}px Anton`;
+        if (draw) ctx.fillText(fig, leftX, y + 100 * s);
+        y += 118 * s;
+        if (v.key_figure_label) {
+          if (draw) ctx.fillStyle = INK;
+          ctx.font = `500 ${Math.round(27 * s)}px Outfit`;
+          y = drawParagraph(ctx, v.key_figure_label, leftX, y + 20 * s, leftW, 36 * s, false, 3, draw) + 40 * s;
+        }
       }
-    }
-    if (v.important_date) {
-      ctx.fillStyle = CORAL;
-      ctx.font = "84px Anton";
-      const dy = drawParagraph(ctx, String(v.important_date), leftX, ly + 60, leftW, 78, false, 2);
-      ctx.fillStyle = INK;
-      ctx.font = "500 26px Outfit";
-      ctx.fillText("échéance à retenir", leftX, dy + 10);
-      ly = dy + 50;
-    }
+      if (v.important_date) {
+        if (draw) ctx.fillStyle = CORAL;
+        ctx.font = `${Math.round(84 * s)}px Anton`;
+        const dy = drawParagraph(ctx, String(v.important_date), leftX, y + 60 * s, leftW, 78 * s, false, 2, draw);
+        if (draw) { ctx.fillStyle = INK; ctx.font = `500 ${Math.round(26 * s)}px Outfit`; ctx.fillText("échéance à retenir", leftX, dy + 10 * s); }
+        y = dy + 50 * s;
+      }
+      if (extras.length) {
+        if (draw) drawLabel(ctx, "LES CHIFFRES", leftX, y + 40 * s);
+        y += 50 * s;
+        ctx.font = `500 ${Math.round(25 * s)}px Outfit`;
+        extras.forEach((d, i) => {
+          if (draw) {
+            ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
+            ctx.fillRect(leftX, y + 14 * s, 10 * s, 10 * s);
+            ctx.fillStyle = INK;
+          }
+          y = drawParagraph(ctx, d, leftX + 26 * s, y + 24 * s, leftW - 26 * s, 34 * s, false, 3, draw) + 10 * s;
+        });
+      }
+      return y - top;
+    };
+    const s = fitScale(leftCol, bottom - top);
+    ly = top + leftCol(s, true);
     const room = Math.floor((bottom - ly - 40) / 36);
     if (content.summary && room >= 3) {
       ctx.fillStyle = INK;
       ctx.font = "400 26px Outfit";
-      drawParagraph(ctx, content.summary, leftX, ly + 40, leftW, 36, false, room);
+      drawParagraph(ctx, content.summary, leftX, ly + 44, leftW, 36, false, room);
     }
   } else {
     const text = content.summary || title;
