@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { savePost } from "@/lib/api";
+import { runFactCheck } from "@/lib/factcheck";
 import { Save, CalendarClock, Loader2, X } from "lucide-react";
 
 export const PostActions = ({ post, thumb, origin = "studio", onSaved }) => {
@@ -24,11 +25,18 @@ export const PostActions = ({ post, thumb, origin = "studio", onSaved }) => {
     visual: post.visual || null,
     quality: post.quality || null,
     sources: post.sources || null,
+    source_text: post.source_text || "",
     scheduled_at: scheduled_at || null,
     origin,
   });
 
   const doSave = async (scheduled_at) => {
+    if (scheduled_at) {
+      const { missing } = runFactCheck(post);
+      if (missing > 0 && !window.confirm(
+        `${missing} chiffre${missing > 1 ? "s" : ""} du post ${missing > 1 ? "sont introuvables" : "est introuvable"} dans la source ` +
+        "(voir « Vérification des chiffres »). Programmer quand même ?")) return;
+    }
     setSaving(true);
     try {
       const { id } = await savePost(build(scheduled_at));

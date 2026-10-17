@@ -21,14 +21,14 @@ const MODES = {
   generate: {
     title: "Création de votre post",
     subtitle: "Rédaction du post LinkedIn à partir du sujet choisi",
-    expected: 40,
+    expected: 50,
     steps: [
-      { label: "Lecture du sujet sélectionné", secs: 0 },
-      { label: "Analyse : faits, chiffres, enjeux réglementaires", secs: 4 },
-      { label: "Évaluation détaillée du potentiel (/100)", secs: 13 },
-      { label: "Choix de l'angle éditorial", secs: 20 },
-      { label: "Rédaction du texte LinkedIn", secs: 26 },
-      { label: "Contrôle qualité et préparation du visuel", secs: 35 },
+      { label: "Ouverture et lecture de l'article complet", secs: 0 },
+      { label: "Analyse : faits, chiffres, enjeux réglementaires", secs: 10 },
+      { label: "Évaluation détaillée du potentiel (/100)", secs: 19 },
+      { label: "Choix de l'angle éditorial", secs: 26 },
+      { label: "Rédaction du texte LinkedIn", secs: 32 },
+      { label: "Contrôle qualité et préparation du visuel", secs: 42 },
     ],
   },
   analyze: {

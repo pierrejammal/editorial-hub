@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import base64
 import uuid
 import socket
 import asyncio
@@ -515,6 +516,7 @@ CONTENU:
         "date_label": french_date_label(pub_dt),
         "image_url": scraped.get("image") or "",
     })
+    data["source_text"] = scraped["text"]  # what the figures are checked against in the Studio
     if not data.get("sources"):
         data["sources"] = [{"title": scraped["site_name"], "url": req.url}]
     data["id"] = str(uuid.uuid4())
@@ -532,6 +534,27 @@ def fetch_feed(rss_url: str):
         logger.error(f"RSS fetch failed: {e}")
         raise HTTPException(status_code=503, detail="Google News ne répond pas pour le moment, réessayez.")
     return feedparser.parse(r.content)
+
+
+def _words(s: str) -> set:
+    return {w for w in re.findall(r"[a-zà-ÿ0-9]{4,}", (s or "").lower())}
+
+
+def match_candidate(topic: Dict[str, Any], candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    url = topic.get("source_url")
+    for c in candidates:
+        if url and c["link"] == url:
+            return c
+    tw = _words(f"{topic.get('title', '')} {topic.get('summary', '')}")
+    best, score = None, 0.0
+    for c in candidates:
+        cw = _words(f"{c['title']} {c['snippet']}")
+        if not cw:
+            continue
+        s = len(tw & cw) / len(cw) + (0.3 if topic.get("source") and topic["source"] == c["source"] else 0)
+        if s > score:
+            best, score = c, s
+    return best if score >= 0.25 else None
 
 
 async def do_search(req: SearchReq) -> Dict[str, Any]:
@@ -575,14 +598,122 @@ N'invente rien: appuie-toi sur les titres/sources/snippets fournis."""
     topics.sort(key=lambda t: t["score"], reverse=True)
     topics = topics[:n]
     for t in topics:
+        # The AI sometimes rewrites or invents the link: always point to a real collected article,
+        # and keep its snippet as a fallback source for the figure check.
+        cand = match_candidate(t, candidates)
+        if cand:
+            if t.get("source_url") not in [c["link"] for c in candidates]:
+                t["source_url"] = cand["link"]
+            t["snippet"] = cand["snippet"]
+            t.setdefault("source", cand["source"])
         t["id"] = str(uuid.uuid4())
         t.setdefault("date_label", french_date_label(None))
     data["topics"] = topics
     return data
 
 
+# ---------- Google News link → real article ----------
+GNEWS_HOST = "news.google.com"
+
+
+def _gnews_article_id(url: str) -> Optional[str]:
+    p = urlparse(url)
+    if p.hostname != GNEWS_HOST:
+        return None
+    m = re.search(r"/(?:rss/)?articles/([^/?#]+)", p.path)
+    return m.group(1) if m else None
+
+
+def _gnews_decode_legacy(article_id: str) -> Optional[str]:
+    """Older Google News ids embed the publisher URL directly in a base64 blob."""
+    try:
+        raw = base64.urlsafe_b64decode(article_id + "=" * (-len(article_id) % 4))
+    except Exception:
+        return None
+    m = re.search(rb"https?://[^\x00-\x20\x7f-\xff\"<>]+", raw)
+    if m and GNEWS_HOST.encode() not in m.group(0):
+        return m.group(0).decode("utf-8", "ignore")
+    return None
+
+
+def _gnews_decode_batch(article_id: str) -> Optional[str]:
+    """Current Google News ids: ask Google's own 'garturlreq' endpoint for the publisher URL
+    (same call the news.google.com page makes in the browser)."""
+    ua = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+    try:
+        page = requests.get(f"https://{GNEWS_HOST}/rss/articles/{article_id}", headers=ua, timeout=10).text
+        sig = re.search(r'data-n-a-sg="([^"]+)"', page)
+        ts = re.search(r'data-n-a-ts="([^"]+)"', page)
+        if not (sig and ts):
+            return None
+        inner = (
+            '["garturlreq",[["X","X",["X","X"],null,null,1,1,"FR:fr",null,1,null,null,null,null,null,0,1],'
+            f'"X","X",1,[1,1,1],1,1,null,0,0,null,0],"{article_id}",{ts.group(1)},"{sig.group(1)}"]'
+        )
+        payload = "f.req=" + requests.utils.quote(json.dumps([[["Fbv4je", inner]]]))
+        r = requests.post(
+            f"https://{GNEWS_HOST}/_/DotsSplashUi/data/batchexecute",
+            data=payload, timeout=10,
+            headers={**ua, "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
+        )
+        parts = r.text.split("\n\n")
+        body = parts[1] if len(parts) > 1 else parts[0]
+        decoded = json.loads(json.loads(body)[0][2])[1]
+        return decoded if isinstance(decoded, str) and decoded.startswith("http") else None
+    except Exception as e:
+        logger.info(f"gnews decode failed: {e}")
+        return None
+
+
+def resolve_article_url(url: str) -> str:
+    """Return the publisher's article URL for a Google News link (or the URL unchanged)."""
+    aid = _gnews_article_id(url or "")
+    if not aid:
+        return url
+    real = _gnews_decode_legacy(aid) or _gnews_decode_batch(aid)
+    if real:
+        return real
+    try:  # last chance: some links still answer with a plain HTTP redirect
+        r = requests.get(url, timeout=10, allow_redirects=True, headers={"User-Agent": "Mozilla/5.0"})
+        if urlparse(r.url).hostname not in (GNEWS_HOST, "consent.google.com"):
+            return r.url
+    except Exception:
+        pass
+    return url
+
+
+def fetch_topic_article(url: str) -> Optional[Dict[str, Any]]:
+    """Best effort: the full article behind a search result. None if it can't be read."""
+    real = resolve_article_url(url)
+    if not real or urlparse(real).hostname == GNEWS_HOST:
+        return None
+    try:
+        scraped = scrape_url(real)
+    except HTTPException:
+        return None
+    except Exception as e:
+        logger.info(f"topic article scrape failed: {e}")
+        return None
+    return {**scraped, "url": real}
+
+
 async def do_analyze_topic(req: AnalyzeTopicReq) -> Dict[str, Any]:
     t = req.topic
+    # Read the actual article (not just the Google News headline + snippet) so the post can use
+    # its figures, quotes and details, exactly like "Analyser un lien".
+    article = await asyncio.to_thread(fetch_topic_article, t.get("source_url", ""))
+    if article:
+        source_block = f"""ARTICLE COMPLET (lu sur {article['url']}):
+TITRE ORIGINAL: {article['title']}
+DATE DÉTECTÉE: {article['published'] or 'inconnue'}
+CONTENU:
+{article['text']}"""
+    else:
+        source_block = (
+            "ATTENTION : l'article complet n'a pas pu être lu. Tu ne disposes que du titre et du résumé "
+            "ci-dessus : n'avance AUCUN chiffre, date ou détail qui n'y figure pas."
+        )
     prompt = f"""Sujet sélectionné pour production éditoriale FORSIDES:
 TITRE: {t.get('title')}
 SOURCE: {t.get('source')}
@@ -593,6 +724,8 @@ POURQUOI: {t.get('why_attention', '')}
 INSIGHT: {t.get('main_insight', '')}
 SECTEUR: {t.get('sector', '')}
 
+{source_block}
+
 {ANALYSIS_INSTRUCTIONS(req.length)}
 Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('score')})."""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
@@ -600,17 +733,22 @@ Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('s
     normalize_chart(data)
     data["caption"] = clean_caption(data.get("caption") or "")
     data["meta"] = data.get("meta") or {}
+    source_url = article["url"] if article else t.get("source_url", "")
     data["meta"].update({
         "source": t.get("source", ""),
-        "source_url": t.get("source_url", ""),
-        "source_title": t.get("title", ""),
+        "source_url": source_url,
+        "source_title": (article or {}).get("title") or t.get("title", ""),
         "summary": t.get("summary", ""),
         "publication_date": t.get("date", ""),
         "date_label": t.get("date_label") or french_date_label(None),
         "image_url": "",
+        "article_read": bool(article),
     })
+    # what the figures will be checked against in the Studio
+    data["source_text"] = article["text"] if article else "\n".join(
+        str(t.get(k) or "") for k in ("title", "summary", "snippet"))
     if not data.get("sources"):
-        data["sources"] = [{"title": t.get("source", ""), "url": t.get("source_url", "")}]
+        data["sources"] = [{"title": t.get("source", ""), "url": source_url}]
     data["id"] = str(uuid.uuid4())
     await db.posts.insert_one({**data, "created_at": datetime.now(timezone.utc).isoformat()})
     data.pop("_id", None)
@@ -645,6 +783,7 @@ Renvoie STRICTEMENT ce JSON:
     data["meta"].setdefault("source", "")
     data["meta"]["image_url"] = ""
     data["caption"] = req.caption
+    data["source_text"] = req.caption  # the user's own text is the reference for the figure check
     return data
 
 
@@ -820,6 +959,7 @@ class SavePostReq(BaseModel):
     sources: Optional[List[Dict[str, Any]]] = None
     scheduled_at: Optional[str] = None
     origin: str = "studio"
+    source_text: str = ""
 
 
 @api_router.post("/posts/save")
@@ -828,6 +968,8 @@ async def save_post(req: SavePostReq):
     doc = req.model_dump()
     doc["id"] = pid
     doc["saved"] = True
+    if not doc.get("source_text"):
+        doc.pop("source_text", None)  # never wipe a stored source with an empty value
     doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.posts.update_one({"id": pid}, {"$set": doc}, upsert=True)
     return {"id": pid}

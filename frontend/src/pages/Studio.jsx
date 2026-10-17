@@ -7,6 +7,7 @@ import { AnalysisPanel } from "@/components/AnalysisPanel";
 import { CaptionEditor } from "@/components/CaptionEditor";
 import { VisualPreview } from "@/components/VisualPreview";
 import { PostActions } from "@/components/PostActions";
+import { FactCheckPanel } from "@/components/FactCheckPanel";
 import { useStudio } from "@/context/StudioContext";
 import { ArrowLeft } from "lucide-react";
 
@@ -68,6 +69,7 @@ const Studio = () => {
             <ScorePanel scoring={post.scoring} />
             <AnalysisPanel editorial={post.editorial} meta={meta} sources={post.sources} />
             <CaptionEditor />
+            <FactCheckPanel post={post} />
           </div>
           <div className="lg:sticky lg:top-24 lg:self-start">
             <VisualPreview onThumb={setThumb} />
