@@ -22,7 +22,7 @@ const LENGTHS = [
   { key: "decryptage", label: "Décryptage approfondi" },
 ];
 
-export const CaptionEditor = () => {
+export const CaptionEditor = ({ bare = false }) => {
   const { post, updateCaption, updateQuality } = useStudio();
   const [length, setLength] = useState("standard");
   const [busy, setBusy] = useState(null);
@@ -107,14 +107,16 @@ export const CaptionEditor = () => {
   return (
     <section
       data-testid="caption-editor"
-      className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"
+      className={bare ? "" : "rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"}
     >
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-serif text-lg font-bold text-forsides-ink">Caption LinkedIn</h3>
-        <span className="font-mono text-xs text-slate-400">
-          {(post.caption || "").length} car.
-        </span>
-      </div>
+      {!bare && (
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-serif text-lg font-bold text-forsides-ink">Caption LinkedIn</h3>
+          <span className="font-mono text-xs text-slate-400">
+            {(post.caption || "").length} car.
+          </span>
+        </div>
+      )}
 
       <div className="mb-3 flex flex-wrap items-center gap-1.5">
         {LENGTHS.map((l) => (

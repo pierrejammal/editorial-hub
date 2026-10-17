@@ -7,15 +7,15 @@ const ROWS = [
   { key: "insight", label: "Insight" },
 ];
 
-export const AnalysisPanel = ({ editorial, meta, sources }) => {
+export const AnalysisPanel = ({ editorial, meta, sources, bare = false }) => {
   if (!editorial) return null;
   return (
     <section
       data-testid="analysis-panel"
-      className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"
+      className={bare ? "" : "rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"}
     >
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-serif text-lg font-bold text-forsides-ink">Analyse éditoriale</h3>
+        {!bare && <h3 className="font-serif text-lg font-bold text-forsides-ink">Analyse éditoriale</h3>}
         {editorial.angle && (
           <span
             data-testid="editorial-angle"

@@ -9,10 +9,13 @@ import { VisualPreview } from "@/components/VisualPreview";
 import { PostActions } from "@/components/PostActions";
 import { FactCheckPanel } from "@/components/FactCheckPanel";
 import { EnglishVersionButton } from "@/components/EnglishVersionButton";
+import { Collapsible } from "@/components/Collapsible";
+import { runFactCheck } from "@/lib/factcheck";
+import { scoreBand } from "@/lib/score";
 import { useStudio } from "@/context/StudioContext";
 import { savePost } from "@/lib/api";
 import { buildSavePayload } from "@/lib/postPayload";
-import { ArrowLeft, Check, Loader2, CloudOff } from "lucide-react";
+import { ArrowLeft, Check, Loader2, CloudOff, ShieldCheck, ShieldAlert } from "lucide-react";
 
 const Studio = () => {
   const { post, setPost } = useStudio();
@@ -48,6 +51,12 @@ const Studio = () => {
 
   if (!post) return null;
   const meta = post.meta || {};
+
+  // short summaries shown on the panels when they are closed
+  const total = post.scoring?.total;
+  const band = total != null ? scoreBand(total) : null;
+  const fc = runFactCheck(post);
+  const pill = (text, cls) => <span className={`rounded-full px-2.5 py-0.5 font-mono text-xs font-bold ${cls}`}>{text}</span>;
 
   return (
     <div className="min-h-screen paper-grain">
@@ -104,10 +113,29 @@ const Studio = () => {
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-6">
-            <ScorePanel scoring={post.scoring} />
-            <AnalysisPanel editorial={post.editorial} meta={meta} sources={post.sources} />
-            <CaptionEditor />
-            <FactCheckPanel post={post} />
+            {post.scoring && (
+              <Collapsible id="score" title="Score éditorial"
+                summary={band && <span className="rounded-full px-2.5 py-0.5 font-mono text-xs font-bold text-white" style={{ background: band.color }}>{total}/100 · {band.label}</span>}>
+                <ScorePanel scoring={post.scoring} bare />
+              </Collapsible>
+            )}
+            {post.editorial && (
+              <Collapsible id="analysis" title="Analyse éditoriale"
+                summary={post.editorial.angle && pill(post.editorial.angle, "hidden bg-forsides-red/10 text-forsides-red sm:inline")}>
+                <AnalysisPanel editorial={post.editorial} meta={meta} sources={post.sources} bare />
+              </Collapsible>
+            )}
+            <Collapsible id="caption" title="Texte LinkedIn" defaultOpen
+              summary={<span className="font-mono text-xs text-slate-400">{(post.caption || "").length} car.</span>}>
+              <CaptionEditor bare />
+            </Collapsible>
+            <Collapsible id="factcheck" title="Vérification des chiffres"
+              icon={fc.available && fc.missing === 0 ? <ShieldCheck className="h-5 w-5 text-emerald-600" /> : <ShieldAlert className="h-5 w-5 text-forsides-red" />}
+              summary={!fc.available ? pill("source indisponible", "bg-slate-100 text-slate-500")
+                : fc.missing ? pill(`${fc.missing} à vérifier`, "bg-forsides-red/10 text-forsides-red")
+                : pill(fc.items.length ? "tout est sourcé" : "aucun chiffre", "bg-emerald-50 text-emerald-700")}>
+              <FactCheckPanel post={post} bare />
+            </Collapsible>
           </div>
           {/* Frozen right column: full screen height, the visual fits entirely at the top and the
               visual's settings are below it; this column scrolls on its own, the left one too. */}

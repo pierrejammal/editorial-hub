@@ -2,7 +2,8 @@ import React from "react";
 import { scoreBand, SUB_SCORES } from "@/lib/score";
 import { Check, TriangleAlert } from "lucide-react";
 
-export const ScorePanel = ({ scoring }) => {
+// bare: inside a Collapsible card (no card of its own)
+export const ScorePanel = ({ scoring, bare = false }) => {
   if (!scoring) return null;
   const total = scoring.total ?? 0;
   const band = scoreBand(total);
@@ -13,7 +14,7 @@ export const ScorePanel = ({ scoring }) => {
   return (
     <section
       data-testid="score-panel"
-      className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"
+      className={bare ? "" : "rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"}
     >
       <div className="flex items-center gap-6">
         <div className="relative shrink-0" style={{ width: 128, height: 128 }}>

@@ -27,7 +27,7 @@ const Row = ({ it }) => {
   );
 };
 
-export const FactCheckPanel = ({ post }) => {
+export const FactCheckPanel = ({ post, bare = false }) => {
   const check = useMemo(() => runFactCheck(post), [post]);
   const [showFound, setShowFound] = useState(false);
 
@@ -36,8 +36,8 @@ export const FactCheckPanel = ({ post }) => {
   const found = check.items.filter((i) => i.status === "found");
 
   return (
-    <section data-testid="factcheck-panel" className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section data-testid="factcheck-panel" className={bare ? "" : "rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm"}>
+      <div className={`mb-3 flex items-center justify-between gap-3 ${bare ? "hidden" : ""}`}>
         <h3 className="flex items-center gap-2 font-serif text-lg font-bold text-forsides-ink">
           {ok ? <ShieldCheck className="h-5 w-5 text-emerald-600" /> : <ShieldAlert className="h-5 w-5 text-forsides-red" />}
           Vérification des chiffres
