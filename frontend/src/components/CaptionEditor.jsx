@@ -71,9 +71,13 @@ export const CaptionEditor = () => {
     }
   };
 
-  const copy = () => {
-    navigator.clipboard.writeText(post.caption || "");
-    toast.success("Caption copié");
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(post.caption || "");
+      toast.success("Caption copié");
+    } catch {
+      toast.error("Copie impossible : sélectionnez le texte et copiez-le manuellement (Ctrl+C)");
+    }
   };
 
   const actions = [

@@ -34,9 +34,19 @@ const History = () => {
 
   const remove = async (id, e) => {
     e.stopPropagation();
-    await deletePost(id);
-    setPosts((p) => p.filter((x) => x.id !== id));
-    toast.success("Post supprimé");
+    if (!window.confirm("Supprimer définitivement ce post ?")) return;
+    try {
+      await deletePost(id);
+      setPosts((p) => p.filter((x) => x.id !== id));
+      toast.success("Post supprimé");
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setPosts((p) => p.filter((x) => x.id !== id));
+        toast.success("Post déjà supprimé");
+      } else {
+        toast.error("Échec de la suppression, réessayez");
+      }
+    }
   };
 
   return (
@@ -101,7 +111,9 @@ const History = () => {
                     <button
                       data-testid={`history-delete-${i}`}
                       onClick={(e) => remove(p.id, e)}
-                      className="absolute bottom-3 right-3 rounded-full bg-white/90 p-2 text-forsides-red opacity-0 shadow transition-opacity group-hover:opacity-100"
+                      aria-label="Supprimer ce post"
+                      title="Supprimer"
+                      className="absolute bottom-3 right-3 rounded-full bg-white/90 p-2 text-forsides-red shadow transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

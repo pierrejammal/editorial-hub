@@ -2,10 +2,12 @@ import os
 import re
 import json
 import uuid
+import socket
 import asyncio
 import logging
+import ipaddress
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import requests
 import feedparser
@@ -67,13 +69,20 @@ def parse_json(raw: str) -> Dict[str, Any]:
     return json.loads(txt)
 
 
+LLM_TIMEOUT_S = 120  # a hung AI call must never leave a job "pending" forever
+
+
 async def llm_text(system: str, prompt: str, model: str = "claude-sonnet-4-6") -> str:
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=str(uuid.uuid4()),
         system_message=system,
     ).with_model("anthropic", model)
-    resp = await chat.send_message(UserMessage(text=prompt))
+    try:
+        resp = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=LLM_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        logger.error("LLM call timed out")
+        raise HTTPException(status_code=504, detail="L'IA met trop de temps à répondre, réessayez.")
     return resp if isinstance(resp, str) else str(resp)
 
 
@@ -81,15 +90,99 @@ FAST_MODEL = "claude-haiku-4-5-20251001"
 
 
 async def llm_json(system: str, prompt: str, model: str = "claude-sonnet-4-6") -> Dict[str, Any]:
-    raw = await llm_text(system, prompt, model)
+    # One automatic retry: an occasional malformed JSON answer should not fail the whole workflow.
+    for attempt in range(2):
+        raw = await llm_text(system, prompt, model)
+        try:
+            data = parse_json(raw)
+            if isinstance(data, dict):
+                return data
+            raise ValueError("JSON root is not an object")
+        except Exception as e:
+            logger.error(f"JSON parse failed (attempt {attempt + 1}): {e} | raw head: {raw[:200]}")
+    raise HTTPException(status_code=502, detail="Réponse IA illisible, réessayez.")
+
+
+# ---------- Score consistency ----------
+SCORE_MAX = {"pertinence": 20, "impact": 20, "actualite": 15, "fiabilite": 15,
+             "linkedin": 15, "vulgarisation": 10, "originalite": 5}
+
+
+def to_int(v: Any, default: int = 0) -> int:
     try:
-        return parse_json(raw)
-    except Exception as e:
-        logger.error(f"JSON parse failed: {e} | raw head: {raw[:200]}")
-        raise HTTPException(status_code=502, detail="Réponse IA illisible, réessayez.")
+        return int(round(float(v)))
+    except (TypeError, ValueError):
+        return default
+
+
+def classification_for(total: int) -> str:
+    # Same thresholds as frontend/src/lib/score.js (scoreBand)
+    if total >= 90:
+        return "PRIORITÉ ÉDITORIALE"
+    if total >= 80:
+        return "TRÈS FORT"
+    if total >= 70:
+        return "BON SUJET"
+    if total >= 60:
+        return "SUJET MOYEN"
+    return "À ÉCARTER"
+
+
+def normalize_scoring(data: Dict[str, Any]) -> None:
+    """The AI sometimes returns a total that doesn't match its sub-scores, or values out of range.
+    Clamp each sub-score to its max and recompute the total so the gauge and the details agree."""
+    s = data.get("scoring")
+    if not isinstance(s, dict):
+        return
+    total, found = 0, 0
+    for key, mx in SCORE_MAX.items():
+        item = s.get(key)
+        raw = item.get("score") if isinstance(item, dict) else item
+        if raw is None:
+            continue
+        val = max(0, min(mx, to_int(raw)))
+        if isinstance(item, dict):
+            item["score"] = val
+        else:
+            s[key] = {"score": val}
+        total += val
+        found += 1
+    if found == len(SCORE_MAX):
+        s["total"] = total
+    else:
+        s["total"] = max(0, min(100, to_int(s.get("total"))))
+    s["classification"] = classification_for(s["total"])
+    q = data.get("quality")
+    if isinstance(q, dict) and "score" in q:
+        q["score"] = max(0, min(100, to_int(q.get("score"))))
+
+
+# ---------- URL safety ----------
+def check_public_url(url: str) -> None:
+    """Refuse non-web URLs and addresses inside the server's own network (localhost, 10.x, 169.254.x...),
+    so the scraper can't be used to read internal services."""
+    p = urlparse(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        raise HTTPException(status_code=422, detail="Lien invalide : utilisez une adresse commençant par http:// ou https://")
+    try:
+        infos = socket.getaddrinfo(p.hostname, None)
+    except socket.gaierror:
+        return  # can't resolve here: let the normal fetch (and its r.jina.ai fallback) decide
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            raise HTTPException(status_code=422, detail="Ce lien n'est pas autorisé.")
+
+
+def decode_html(r: requests.Response) -> str:
+    # Pages without a declared charset are decoded as Latin-1 by requests, which breaks French accents ("Ã©").
+    if not r.encoding or r.encoding.lower() == "iso-8859-1":
+        r.encoding = r.apparent_encoding or "utf-8"
+    return r.text
 
 
 def scrape_url(url: str) -> Dict[str, Any]:
+    check_public_url(url)
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                       "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -101,7 +194,7 @@ def scrape_url(url: str) -> Dict[str, Any]:
     try:
         r = requests.get(url, headers=headers, timeout=12)
         if r.status_code == 200:
-            html = r.text
+            html = decode_html(r)
     except Exception:
         html = None
 
@@ -263,7 +356,9 @@ Le score doit être exigeant et justifié."""
 
 # ---------- Core logic ----------
 async def do_analyze_url(req: AnalyzeUrlReq) -> Dict[str, Any]:
-    scraped = scrape_url(req.url)
+    # scrape_url is blocking network code (up to ~30 s): run it in a thread so the server
+    # keeps answering other requests (including the job polling) meanwhile.
+    scraped = await asyncio.to_thread(scrape_url, req.url.strip())
     pub_dt = None
     if scraped["published"]:
         try:
@@ -279,7 +374,8 @@ CONTENU:
 
 {ANALYSIS_INSTRUCTIONS(req.length)}"""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
-    data["meta"] = data.get("meta", {})
+    normalize_scoring(data)
+    data["meta"] = data.get("meta") or {}
     data["meta"].update({
         "source": scraped["site_name"],
         "source_url": req.url,
@@ -296,12 +392,23 @@ CONTENU:
     return data
 
 
+def fetch_feed(rss_url: str):
+    # Download with an explicit timeout (feedparser's own fetch has none and can hang).
+    try:
+        r = requests.get(rss_url, timeout=15, headers={"User-Agent": "Mozilla/5.0 FORSIDES News Studio"})
+        r.raise_for_status()
+    except Exception as e:
+        logger.error(f"RSS fetch failed: {e}")
+        raise HTTPException(status_code=503, detail="Google News ne répond pas pour le moment, réessayez.")
+    return feedparser.parse(r.content)
+
+
 async def do_search(req: SearchReq) -> Dict[str, Any]:
     q = req.topic
     if req.institutions:
         q = f"{q} {req.institutions}"
     rss = f"https://news.google.com/rss/search?q={requests.utils.quote(q)}&hl=fr&gl=FR&ceid=FR:fr"
-    feed = feedparser.parse(rss)
+    feed = await asyncio.to_thread(fetch_feed, rss)
     candidates = []
     for entry in feed.entries[:14]:
         src = entry.source.title if entry.get("source") and entry.source.get("title") else ""
@@ -331,8 +438,11 @@ Renvoie STRICTEMENT ce JSON, champs courts (summary 2 phrases max, why_attention
 ]}}
 N'invente rien: appuie-toi sur les titres/sources/snippets fournis."""
     data = await llm_json(EDITORIAL_SYSTEM, prompt, FAST_MODEL)
-    topics = data.get("topics", [])
-    topics.sort(key=lambda t: t.get("score", 0), reverse=True)
+    topics = [t for t in (data.get("topics") or []) if isinstance(t, dict) and t.get("title")]
+    for t in topics:
+        t["score"] = max(0, min(100, to_int(t.get("score"))))
+    topics.sort(key=lambda t: t["score"], reverse=True)
+    topics = topics[:n]
     for t in topics:
         t["id"] = str(uuid.uuid4())
         t.setdefault("date_label", french_date_label(None))
@@ -355,7 +465,8 @@ SECTEUR: {t.get('sector', '')}
 {ANALYSIS_INSTRUCTIONS(req.length)}
 Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('score')})."""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
-    data["meta"] = data.get("meta", {})
+    normalize_scoring(data)
+    data["meta"] = data.get("meta") or {}
     data["meta"].update({
         "source": t.get("source", ""),
         "source_url": t.get("source_url", ""),
@@ -393,7 +504,7 @@ Renvoie STRICTEMENT ce JSON:
   }}
 }}"""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
-    data["meta"] = data.get("meta", {})
+    data["meta"] = data.get("meta") or {}
     data["meta"].setdefault("date_label", french_date_label(None))
     data["meta"].setdefault("source", "")
     data["meta"]["image_url"] = ""
@@ -402,23 +513,42 @@ Renvoie STRICTEMENT ce JSON:
 
 
 # ---------- Job system (bypasses 60s edge timeout) ----------
+JOB_MAX_AGE = timedelta(minutes=6)   # a job still pending after this was lost (e.g. server restart)
+JOB_TTL_HOURS = 24                    # finished jobs are deleted automatically after a day
+_running_tasks: set = set()           # keep references so background jobs aren't garbage-collected mid-run
+
+
 async def run_job(job_id: str, coro):
     try:
         result = await coro
         await db.jobs.update_one({"id": job_id}, {"$set": {"status": "done", "result": result}})
     except HTTPException as e:
         await db.jobs.update_one({"id": job_id}, {"$set": {"status": "error", "detail": str(e.detail)}})
-    except Exception as e:
+    except Exception:
         logger.exception("job failed")
         await db.jobs.update_one({"id": job_id}, {"$set": {"status": "error", "detail": "Erreur interne, réessayez."}})
 
 
 async def start_job(coro) -> Dict[str, str]:
     job_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
     await db.jobs.insert_one({"id": job_id, "status": "pending",
-                             "created_at": datetime.now(timezone.utc).isoformat()})
-    asyncio.create_task(run_job(job_id, coro))
+                              "created_at": now.isoformat(), "created_dt": now})
+    task = asyncio.create_task(run_job(job_id, coro))
+    _running_tasks.add(task)
+    task.add_done_callback(_running_tasks.discard)
     return {"job_id": job_id}
+
+
+@app.on_event("startup")
+async def ensure_indexes():
+    try:
+        await db.jobs.create_index("id", unique=True)
+        await db.jobs.create_index("created_dt", expireAfterSeconds=JOB_TTL_HOURS * 3600)
+        await db.posts.create_index("id")
+        await db.posts.create_index([("saved", 1), ("updated_at", -1)])
+    except Exception as e:  # never block startup on an index problem
+        logger.warning(f"index creation skipped: {e}")
 
 
 @api_router.get("/")
@@ -448,9 +578,16 @@ async def job_compose(req: ComposeReq):
 
 @api_router.get("/jobs/{job_id}")
 async def get_job(job_id: str):
-    doc = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    doc = await db.jobs.find_one({"id": job_id}, {"_id": 0, "created_dt": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Job introuvable")
+    if doc.get("status") == "pending":
+        try:
+            started = datetime.fromisoformat(doc.get("created_at", ""))
+            if datetime.now(timezone.utc) - started > JOB_MAX_AGE:
+                return {**doc, "status": "error", "detail": "Le traitement a été interrompu, relancez-le."}
+        except ValueError:
+            pass
     return doc
 
 
@@ -497,7 +634,9 @@ CAPTION:
 Évalue 6 critères sur 100: veracite, nouveaute, interet, clarte, originalite, style (naturel, pas IA).
 Renvoie STRICTEMENT:
 {{"score": int 0-100, "criteria": {{"veracite": int, "nouveaute": int, "interet": int, "clarte": int, "originalite": int, "style": int}}, "suggestions": ["si < 75: comment améliorer"]}}"""
-    return await llm_json(EDITORIAL_SYSTEM, prompt)
+    data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    data["score"] = max(0, min(100, to_int(data.get("score"))))
+    return data
 
 
 @api_router.post("/visual-image")
@@ -571,7 +710,9 @@ async def list_posts():
 
 @api_router.delete("/posts/{post_id}")
 async def delete_post(post_id: str):
-    await db.posts.delete_one({"id": post_id})
+    res = await db.posts.delete_one({"id": post_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Introuvable")
     return {"ok": True}
 
 

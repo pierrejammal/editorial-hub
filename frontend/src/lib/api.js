@@ -10,9 +10,18 @@ async function runJob(path, payload, { interval = 3000, maxMs = 240000 } = {}) {
   const { data } = await http.post(path, payload);
   const jobId = data.job_id;
   const deadline = Date.now() + maxMs;
+  let failures = 0;
   while (Date.now() < deadline) {
     await sleep(interval);
-    const { data: job } = await http.get(`/jobs/${jobId}`);
+    let job;
+    try {
+      ({ data: job } = await http.get(`/jobs/${jobId}`));
+      failures = 0;
+    } catch (e) {
+      // A brief network hiccup while polling shouldn't throw away a job that is still running.
+      if (e.response?.status === 404 || ++failures >= 4) throw e;
+      continue;
+    }
     if (job.status === "done") return job.result;
     if (job.status === "error") {
       const err = new Error(job.detail || "Traitement échoué");

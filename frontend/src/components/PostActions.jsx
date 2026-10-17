@@ -8,6 +8,11 @@ export const PostActions = ({ post, thumb, origin = "studio", onSaved }) => {
   const [open, setOpen] = useState(false);
   const [when, setWhen] = useState("");
 
+  // datetime-local wants local time "YYYY-MM-DDTHH:mm"; refuse dates in the past
+  const now = new Date();
+  const minWhen = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const isPast = !!when && new Date(when) <= now;
+
   const build = (scheduled_at) => ({
     id: post.id || null,
     title: post.visual?.title_short || post.meta?.topic || "Post FORSIDES",
@@ -79,17 +84,23 @@ export const PostActions = ({ post, thumb, origin = "studio", onSaved }) => {
             <input
               data-testid="schedule-datetime"
               type="datetime-local"
+              min={minWhen}
               value={when}
               onChange={(e) => setWhen(e.target.value)}
               className="mt-4 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20"
             />
+            {isPast && (
+              <p className="mt-2 text-xs font-medium text-forsides-red">
+                Choisissez une date et une heure dans le futur.
+              </p>
+            )}
             <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
               Simulation : la connexion directe à LinkedIn n'est pas activée. La publication programmée
               est enregistrée dans « Mes posts » avec son horaire.
             </div>
             <button
               data-testid="schedule-confirm"
-              disabled={!when || saving}
+              disabled={!when || saving || isPast}
               onClick={() => doSave(new Date(when).toISOString())}
               className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-forsides-red px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-forsides-bordeaux disabled:opacity-50"
             >
