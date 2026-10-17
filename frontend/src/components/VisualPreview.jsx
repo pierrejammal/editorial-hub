@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
+import { VisualTextEditor } from "@/components/VisualTextEditor";
+import { CarouselDialog } from "@/components/CarouselDialog";
 import {
   renderVisual, loadImage, sourceLogoSrc, hasChart, VW, VH, FONT_SET,
 } from "@/lib/visualRender";
@@ -13,7 +15,7 @@ const initialFormat = (post) => {
   return f === "B" ? "B" : "A";
 };
 import {
-  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check,
+  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal,
 } from "lucide-react";
 
 const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, label }) => {
@@ -58,6 +60,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
   const [sourceLogo, setSourceLogo] = useState(null);
   const [fontsReady, setFontsReady] = useState(false);
   const [showConcepts, setShowConcepts] = useState(false);
+  const [showCarousel, setShowCarousel] = useState(false);
   const logoInput = useRef(null);
 
   useEffect(() => setTitle(v.title_short || post.editorial?.fact || post.meta?.topic || ""), [v.title_short]);
@@ -193,6 +196,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
           />
         </div>
 
+        <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual} />
+
         <div className="flex flex-wrap gap-2">
           <button data-testid="visual-upload-logo" onClick={() => logoInput.current?.click()}
             className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
@@ -209,6 +214,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
             className="inline-flex items-center gap-1.5 rounded-full bg-forsides-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-forsides-bordeaux">
             <Download className="h-4 w-4" /> Télécharger PNG
           </button>
+          <button data-testid="visual-carousel" onClick={() => setShowCarousel(true)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-forsides-red px-4 py-2 text-sm font-semibold text-forsides-red transition-colors hover:bg-forsides-red hover:text-white">
+            <GalleryHorizontal className="h-4 w-4" /> Carrousel PDF
+          </button>
           {post.caption && (
             <button data-testid="visual-export-full" onClick={exportFull}
               className="inline-flex items-center gap-1.5 rounded-full bg-forsides-ink px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black">
@@ -218,6 +227,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
         </div>
 
         <input ref={logoInput} type="file" accept="image/*" hidden onChange={onLogoFile} />
+        {showCarousel && <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />}
       </div>
     </section>
   );

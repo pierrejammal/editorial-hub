@@ -8,6 +8,7 @@ import Research from "@/pages/Research";
 import Compose from "@/pages/Compose";
 import Studio from "@/pages/Studio";
 import History from "@/pages/History";
+import Calendar from "@/pages/Calendar";
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="/research" element={<Research />} />
             <Route path="/compose" element={<Compose />} />
             <Route path="/history" element={<History />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="/studio" element={<Studio />} />
           </Routes>
         </BrowserRouter>

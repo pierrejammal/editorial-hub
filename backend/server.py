@@ -578,6 +578,51 @@ def competitor_hit(text: str, names: List[str]) -> Optional[str]:
     return None
 
 
+# ---------- Already posted? ----------
+STOPWORDS = set("""dans pour avec sans sous entre leur leurs cette ces sont être avoir plus moins comme
+mais aussi tout tous toute toutes selon après avant depuis vers chez très bien encore déjà alors
+""".split())
+
+
+def _sig_words(s: str) -> set:
+    return {w for w in re.findall(r"[a-zà-ÿ0-9]{4,}", (s or "").lower()) if w not in STOPWORDS}
+
+
+def _similar(a: str, b: str) -> float:
+    wa, wb = _sig_words(a), _sig_words(b)
+    if not wa or not wb:
+        return 0.0
+    return len(wa & wb) / min(len(wa), len(wb))
+
+
+async def mark_already_posted(topics: List[Dict[str, Any]]) -> None:
+    """Flag topics that match a post saved in "Mes posts" (same article, or same subject)."""
+    saved = await db.posts.find(
+        {"saved": True},
+        {"_id": 0, "id": 1, "title": 1, "meta.source_title": 1, "meta.source_url": 1,
+         "meta.origin_url": 1, "scheduled_at": 1, "updated_at": 1},
+    ).sort("updated_at", -1).limit(300).to_list(300)
+    for t in topics:
+        url = t.get("source_url") or ""
+        best, best_score = None, 0.0
+        for p in saved:
+            m = p.get("meta") or {}
+            if url and url in (m.get("source_url"), m.get("origin_url")):
+                best, best_score = p, 1.0
+                break
+            sc = max(_similar(t.get("title", ""), p.get("title", "")),
+                     _similar(t.get("title", ""), m.get("source_title", "")))
+            if sc > best_score:
+                best, best_score = p, sc
+        if best and best_score >= 0.6:
+            t["already_posted"] = {
+                "id": best["id"],
+                "title": best.get("title", ""),
+                "date": best.get("scheduled_at") or best.get("updated_at") or "",
+                "scheduled": bool(best.get("scheduled_at")),
+            }
+
+
 async def do_search(req: SearchReq) -> Dict[str, Any]:
     q = req.topic
     if req.institutions:
@@ -650,6 +695,12 @@ N'invente rien: appuie-toi sur les titres/sources/snippets fournis."""
             t.setdefault("source", cand["source"])
         t["id"] = str(uuid.uuid4())
         t.setdefault("date_label", french_date_label(None))
+    try:
+        await mark_already_posted(topics)
+    except Exception as e:  # never fail a search because of this check
+        logger.warning(f"already-posted check skipped: {e}")
+    # topics already covered go to the bottom of the list (order kept otherwise)
+    topics.sort(key=lambda t: 1 if t.get("already_posted") else 0)
     data["topics"] = topics
     data["excluded_companies"] = blocked
     if not topics:
@@ -790,6 +841,7 @@ Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('s
         "date_label": t.get("date_label") or french_date_label(None),
         "image_url": "",
         "article_read": bool(article),
+        "origin_url": t.get("source_url", ""),  # search link, to recognise this topic in later searches
     })
     # what the figures will be checked against in the Studio
     data["source_text"] = article["text"] if article else "\n".join(

@@ -1,13 +1,30 @@
 import React from "react";
 import { priorityMeta } from "@/lib/score";
-import { ExternalLink, Sparkles, X } from "lucide-react";
+import { ExternalLink, Sparkles, X, History } from "lucide-react";
 
-export const TopicCard = ({ topic, onGenerate, onIgnore, index }) => {
+const fmtDay = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+};
+
+const alreadyLabel = (a) => {
+  const day = fmtDay(a.date);
+  if (a.scheduled) {
+    const future = new Date(a.date) > new Date();
+    return `${future ? "Déjà programmé pour le" : "Déjà publié le"} ${day}`;
+  }
+  return day ? `Déjà traité le ${day}` : "Déjà traité";
+};
+
+export const TopicCard = ({ topic, onGenerate, onIgnore, onOpenPost, index }) => {
   const pm = priorityMeta(topic.priority);
+  const already = topic.already_posted;
   return (
     <article
       data-testid={`topic-card-${index}`}
-      className="hover-lift rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm hover:shadow-md"
+      className={`hover-lift rounded-xl border p-5 shadow-sm hover:shadow-md ${
+        already ? "border-dashed border-slate-300 bg-white/60" : "border-slate-200/80 bg-white"
+      }`}
       style={{ animationDelay: `${index * 70}ms` }}
     >
       <div className="flex items-start gap-4">
@@ -38,6 +55,24 @@ export const TopicCard = ({ topic, onGenerate, onIgnore, index }) => {
             {topic.date && <span className="text-[11px] text-slate-400">· {topic.date}</span>}
           </div>
 
+          {already && (
+            <div
+              data-testid={`topic-already-${index}`}
+              className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"
+            >
+              <History className="h-3.5 w-3.5 shrink-0" />
+              <span className="font-semibold">{alreadyLabel(already)}</span>
+              {already.title && <span className="truncate text-amber-700">« {already.title} »</span>}
+              {onOpenPost && (
+                <button
+                  onClick={() => onOpenPost(already.id)}
+                  className="ml-auto font-semibold underline hover:text-forsides-red"
+                >
+                  Voir le post
+                </button>
+              )}
+            </div>
+          )}
           <h3 className="mt-2 font-serif text-lg font-bold leading-snug text-forsides-ink">
             {topic.title}
           </h3>

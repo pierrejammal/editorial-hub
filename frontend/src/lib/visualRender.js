@@ -198,7 +198,17 @@ export function resolveContent(post, title) {
 
   const source = clean(m.source);
   const srcTitle = pick(m.source_title, post.sources?.[0]?.title, m.topic);
-  return { summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: clean(m.date_label) };
+  const auto = { summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: clean(m.date_label) };
+
+  // Text the user edited by hand in "Modifier le texte du visuel" always wins over the automatic choice.
+  const cu = v.custom || {};
+  if (typeof cu.summary === "string") auto.summary = clean(cu.summary);
+  if (Array.isArray(cu.points)) {
+    auto.points = cu.points
+      .map((p) => ({ label: clean(p.label) || "À retenir", text: clean(p.text) }))
+      .filter((p) => p.text);
+  }
+  return auto;
 }
 
 // Density-aware scale: sparse content gets bigger type so the canvas never looks empty,
@@ -609,12 +619,9 @@ function drawSourceFooter(ctx, content, top) {
   }
 }
 
-// opts: { post, version, images:{logoImg, sourceLogoImg} }
-export function renderVisual(ctx, { post, version, images }) {
-  const v = post.visual || {};
+// Blush background, NEWS slab, date, FORSIDES logo and source logo. Returns the header's bottom y.
+export function drawHeader(ctx, post, images) {
   const { logoImg, sourceLogoImg } = images || {};
-  const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
-
   ctx.fillStyle = BLUSH;
   ctx.fillRect(0, 0, VW, VH);
 
@@ -671,16 +678,10 @@ export function renderVisual(ctx, { post, version, images }) {
     if (id) drawEmblem(ctx, id, VW - PAD, logoBottom + 18);
   }
 
-  const headerBottom = bannerBottom + 40;
-  const content = resolveContent(post, title);
-  const footerTop = VH - 200;
+  return bannerBottom + 40;
+}
 
-  if (version === "C" && hasChart(post)) renderChart(ctx, { v, title, content, headerBottom, footerTop });
-  else if (version === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
-  else renderAnalysis(ctx, { title, content, headerBottom, footerTop });
-
-  drawSourceFooter(ctx, content, footerTop);
-
+export function drawSignature(ctx) {
   // signature
   const y = VH - 78;
   ctx.fillStyle = BORDEAUX;
@@ -712,4 +713,27 @@ export function renderVisual(ctx, { post, version, images }) {
   });
 }
 
+// opts: { post, version, images:{logoImg, sourceLogoImg} }
+export function renderVisual(ctx, { post, version, images }) {
+  const v = post.visual || {};
+  const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
+  const headerBottom = drawHeader(ctx, post, images);
+  const content = resolveContent(post, title);
+  const footerTop = VH - 200;
+
+  if (version === "C" && hasChart(post)) renderChart(ctx, { v, title, content, headerBottom, footerTop });
+  else if (version === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
+  else renderAnalysis(ctx, { title, content, headerBottom, footerTop });
+
+  drawSourceFooter(ctx, content, footerTop);
+  drawSignature(ctx);
+}
+
 export const FONT_SET = ["120px Anton", "800 60px Outfit", "500 28px Outfit", "700 44px Caveat", "140px Anton"];
+
+// Building blocks shared with the carousel renderer (carouselRender.js)
+export {
+  drawParagraph, drawTitle, drawLabel, drawRule, drawSourceFooter, drawBarChart, drawPieChart,
+  wrapWords, fitSentences, fitFontSize, ellipsize, fmtValue, clean,
+  PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT,
+};

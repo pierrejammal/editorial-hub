@@ -98,7 +98,8 @@ function postTexts(post) {
   const v = post.visual || {};
   const ed = post.editorial || {};
   const visualTexts = [v.title_short, v.subtitle, v.key_figure_value, v.key_figure_label, v.important_date,
-    v.insight_line, ed.fact, ed.what_changes, ed.why_important, ed.insight, ...(v.data_points || [])];
+    v.insight_line, ed.fact, ed.what_changes, ed.why_important, ed.insight, ...(v.data_points || []),
+    v.custom?.summary, ...((v.custom?.points || []).map((p) => p.text))];
   return [
     { place: "Texte LinkedIn", texts: [post.caption] },
     { place: "Visuel", texts: visualTexts },
@@ -129,6 +130,7 @@ export function runFactCheck(post) {
   const chart = post.visual?.chart;
   if (chart && Array.isArray(chart.items)) {
     for (const it of chart.items) {
+      if (it.value === "" || it.value == null) continue;
       const value = Number(it.value);
       if (!Number.isFinite(value)) continue;
       const decimals = (String(it.value).split(".")[1] || "").length;

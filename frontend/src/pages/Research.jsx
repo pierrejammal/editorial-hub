@@ -5,7 +5,7 @@ import { BrandHeader } from "@/components/BrandHeader";
 import { LoadingWorkflow } from "@/components/LoadingWorkflow";
 import { TopicCard } from "@/components/TopicCard";
 import { useStudio } from "@/context/StudioContext";
-import { searchTopics, analyzeTopic } from "@/lib/api";
+import { searchTopics, analyzeTopic, getPost } from "@/lib/api";
 import { loadCompetitors, saveCompetitors, parseCompetitors, DEFAULT_COMPETITORS } from "@/lib/competitors";
 import { Search, RotateCcw, SlidersHorizontal } from "lucide-react";
 
@@ -82,6 +82,15 @@ const Research = () => {
       toast.error(err.detail || err.response?.data?.detail || "Échec de la génération");
     } finally {
       setGenerating(null);
+    }
+  };
+
+  const openPost = async (id) => {
+    try {
+      setPost(await getPost(id));
+      nav("/studio");
+    } catch {
+      toast.error("Impossible d'ouvrir ce post (supprimé ?)");
     }
   };
 
@@ -235,6 +244,7 @@ const Research = () => {
                   index={i}
                   onGenerate={generate}
                   onIgnore={ignore}
+                  onOpenPost={openPost}
                 />
               ))}
             </div>

@@ -65,6 +65,17 @@ export const BrandHeader = () => {
           >
             Mes posts
           </Link>
+          <Link
+            to="/calendar"
+            data-testid="nav-calendar"
+            className={`rounded-full px-4 py-1.5 font-medium transition-colors ${
+              pathname === "/calendar"
+                ? "bg-forsides-red text-white"
+                : "text-forsides-slate hover:text-forsides-red"
+            }`}
+          >
+            Calendrier
+          </Link>
         </nav>
       </div>
     </header>
