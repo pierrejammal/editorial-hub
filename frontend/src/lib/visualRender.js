@@ -774,11 +774,14 @@ export function drawHeader(ctx, post, images) {
 
   // source (uploaded logo > library logo > emblem)
   if (sourceLogoImg) {
+    // size set with the "Taille du logo" slider (0.6 – 2), default a bit larger than before
+    const scale = Math.max(0.6, Math.min(2, Number(post.visual?.source_logo_scale) || 1.3));
     const ar = sourceLogoImg.width / sourceLogoImg.height;
-    let sh = 64;
+    let sh = 64 * scale;
     let sw = ar * sh;
-    if (sw > 260) {
-      sw = 260;
+    const maxW = Math.min(260 * scale, 520);
+    if (sw > maxW) {
+      sw = maxW;
       sh = sw / ar;
     }
     ctx.drawImage(sourceLogoImg, VW - PAD - sw, logoBottom + 22, sw, sh);

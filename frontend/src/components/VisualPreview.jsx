@@ -5,6 +5,7 @@ import { useStudio } from "@/context/StudioContext";
 import { VisualTextEditor } from "@/components/VisualTextEditor";
 import { TemplateEditor } from "@/components/TemplateEditor";
 import { CarouselDialog } from "@/components/CarouselDialog";
+import { prepareLogo } from "@/lib/logoImage";
 import {
   renderVisual, loadImage, sourceLogoSrc, hasChart, VW, VH, FONT_SET,
 } from "@/lib/visualRender";
@@ -59,7 +60,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const chartOk = hasChart(post);
   const formats = chartOk ? ["A", "B", "C"] : ["A", "B"];
   const [title, setTitle] = useState(v.title_short || post.editorial?.fact || post.meta?.topic || "");
-  const [uploadedLogoSrc, setUploadedLogoSrc] = useState(null);
+  // the imported logo is stored with the post (visual.source_logo), so it survives reloads and saves
+  const uploadedLogoSrc = v.source_logo || null;
   const [logoImg, setLogoImg] = useState(null);
   const [sourceLogo, setSourceLogo] = useState(null);
   const [fontsReady, setFontsReady] = useState(false);
@@ -157,7 +159,15 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setUploadedLogoSrc(reader.result);
+    reader.onload = async () => {
+      try {
+        const logo = await prepareLogo(reader.result); // trims empty margins, limits size
+        updateVisual({ source_logo: logo });
+        toast.success("Logo importé : ajustez sa taille avec le curseur");
+      } catch {
+        toast.error("Image illisible, essayez un PNG ou un JPG");
+      }
+    };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
@@ -201,13 +211,35 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       <div className="flex flex-wrap gap-2">
         <button data-testid="visual-upload-logo" onClick={() => logoInput.current?.click()}
           className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
-          <Upload className="h-4 w-4" /> Logo source
+          <Upload className="h-4 w-4" /> {uploadedLogoSrc ? "Changer le logo" : "Logo source"}
         </button>
+        {uploadedLogoSrc && (
+          <button data-testid="visual-remove-logo" onClick={() => updateVisual({ source_logo: null })}
+            className="rounded-full px-3 py-2 text-sm font-medium text-forsides-slate hover:text-forsides-red">
+            Retirer le logo importé
+          </button>
+        )}
         <button data-testid="visual-toggle-format" onClick={() => setVersion((f) => formats[(formats.indexOf(f) + 1) % formats.length])}
           className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
           <LayoutTemplate className="h-4 w-4" /> Format
         </button>
       </div>
+      {sourceLogo && (
+        <label className="flex items-center gap-3 text-xs text-forsides-slate">
+          <span className="w-24 shrink-0 font-mono text-[10px] uppercase tracking-widest text-slate-400">Taille du logo</span>
+          <input
+            type="range"
+            data-testid="visual-logo-size"
+            min="0.6"
+            max="2"
+            step="0.05"
+            value={Number(v.source_logo_scale) || 1.3}
+            onChange={(e) => updateVisual({ source_logo_scale: Number(e.target.value) })}
+            className="w-full accent-forsides-red"
+          />
+          <span className="w-10 text-right font-mono">{Math.round((Number(v.source_logo_scale) || 1.3) * 100)} %</span>
+        </label>
+      )}
       <input ref={logoInput} type="file" accept="image/*" hidden onChange={onLogoFile} />
     </div>
   );
