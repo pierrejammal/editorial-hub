@@ -15,6 +15,7 @@ const Studio = () => {
   const { post, setPost } = useStudio();
   const nav = useNavigate();
   const [thumb, setThumb] = useState("");
+  const [controlsSlot, setControlsSlot] = useState(null); // left-column spot for the visual's settings
 
   useEffect(() => {
     if (!post) nav("/");
@@ -69,10 +70,13 @@ const Studio = () => {
             <ScorePanel scoring={post.scoring} />
             <AnalysisPanel editorial={post.editorial} meta={meta} sources={post.sources} />
             <CaptionEditor />
+            <div ref={setControlsSlot} />
             <FactCheckPanel post={post} />
           </div>
-          <div className="lg:sticky lg:top-24 lg:self-start">
-            <VisualPreview onThumb={setThumb} />
+          {/* Frozen right column: always the full height of the screen, the visual shrinks to fit
+              inside it; only the left column scrolls (like "Figer les volets" in Excel). */}
+          <div className="order-first lg:order-none lg:sticky lg:top-24 lg:h-[calc(100vh-7.5rem)] lg:self-start">
+            <VisualPreview onThumb={setThumb} controlsTarget={controlsSlot} />
           </div>
         </div>
       </main>

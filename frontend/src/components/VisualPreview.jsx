@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import { VisualTextEditor } from "@/components/VisualTextEditor";
@@ -44,7 +45,7 @@ const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, lab
   );
 };
 
-export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
+export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, controlsTarget }) => {
   const studio = useStudio();
   const post = postProp || studio.post;
   const updateVisual = onVisualChange || studio.updateVisual;
@@ -62,6 +63,22 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
   const [showConcepts, setShowConcepts] = useState(false);
   const [showCarousel, setShowCarousel] = useState(false);
   const logoInput = useRef(null);
+
+  // Frozen-column mode: measure the free space and size the canvas to fit it entirely (4:5)
+  const fitRef = useRef(null);
+  const [fit, setFit] = useState(null);
+  useEffect(() => {
+    const el = fitRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (!width || !height) return setFit(null);
+      const w = Math.floor(Math.min(width, height * (VW / VH)));
+      setFit({ w, h: Math.floor(w * (VH / VW)) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [controlsTarget]);
 
   useEffect(() => setTitle(v.title_short || post.editorial?.fact || post.meta?.topic || ""), [v.title_short]);
 
@@ -103,7 +120,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
       } catch (e) { /* tainted */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption]);
+  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, Boolean(controlsTarget)]);
 
   const download = () => {
     try {
@@ -135,9 +152,80 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
 
   const chooseConcept = (f) => { setVersion(f); updateVisual({ recommended_format: f }); setShowConcepts(false); };
 
+  // Settings (concepts, title, text editor, logo, format). In the Studio they are moved into the
+  // left column (controlsTarget) so the visual on the right always fits the screen, like frozen panes.
+  const controls = (
+    <div className="space-y-3">
+      {showConcepts && (
+        <div data-testid="concept-picker" className="rounded-lg bg-forsides-cream p-3">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-slate-400">
+            Choisissez le concept le plus fort
+          </p>
+          <div className={`grid gap-3 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+            {formats.map((f, i) => (
+              <ConceptThumb key={f} post={localPost} version={f} images={images} fontsReady={fontsReady}
+                active={version === f} onChoose={() => chooseConcept(f)} label={`Concept ${i + 1} · ${CONCEPT_LABELS[f]}`} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-slate-400">
+          <Type className="h-3 w-3" /> Titre du visuel
+        </label>
+        <input
+          data-testid="visual-title-input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={() => updateVisual({ title_short: title })}
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20"
+        />
+      </div>
+
+      <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual} />
+
+      <div className="flex flex-wrap gap-2">
+        <button data-testid="visual-upload-logo" onClick={() => logoInput.current?.click()}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
+          <Upload className="h-4 w-4" /> Logo source
+        </button>
+        <button data-testid="visual-toggle-format" onClick={() => setVersion((f) => formats[(formats.indexOf(f) + 1) % formats.length])}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
+          <LayoutTemplate className="h-4 w-4" /> Format
+        </button>
+      </div>
+      <input ref={logoInput} type="file" accept="image/*" hidden onChange={onLogoFile} />
+    </div>
+  );
+
+  const actions = (
+    <div className="flex flex-wrap gap-2">
+      <button data-testid="visual-download" onClick={download}
+        className="inline-flex items-center gap-1.5 rounded-full bg-forsides-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-forsides-bordeaux">
+        <Download className="h-4 w-4" /> Télécharger PNG
+      </button>
+      <button data-testid="visual-carousel" onClick={() => setShowCarousel(true)}
+        className="inline-flex items-center gap-1.5 rounded-full border border-forsides-red px-4 py-2 text-sm font-semibold text-forsides-red transition-colors hover:bg-forsides-red hover:text-white">
+        <GalleryHorizontal className="h-4 w-4" /> Carrousel PDF
+      </button>
+      {post.caption && (
+        <button data-testid="visual-export-full" onClick={exportFull}
+          className="inline-flex items-center gap-1.5 rounded-full bg-forsides-ink px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black">
+          <FileDown className="h-4 w-4" /> Exporter le post complet
+        </button>
+      )}
+    </div>
+  );
+
+  const split = Boolean(controlsTarget);
+
   return (
-    <section data-testid="visual-preview" className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
+    <section
+      data-testid="visual-preview"
+      className={`rounded-xl border border-slate-200/80 bg-white shadow-sm ${split ? "flex h-full flex-col p-4" : "p-6"}`}
+    >
+      <div className={`flex flex-wrap items-center justify-between gap-2 ${split ? "mb-3" : "mb-4"}`}>
         <h3 className="font-serif text-lg font-bold text-forsides-ink">Visuel LinkedIn · 4:5</h3>
         <div className="flex items-center gap-2">
           <button
@@ -164,71 +252,38 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb }) => {
         </div>
       </div>
 
-      {showConcepts && (
-        <div data-testid="concept-picker" className="mb-4 rounded-lg bg-forsides-cream p-3">
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-slate-400">
-            Choisissez le concept le plus fort
-          </p>
-          <div className={`grid gap-3 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
-            {formats.map((f, i) => (
-              <ConceptThumb key={f} post={localPost} version={f} images={images} fontsReady={fontsReady}
-                active={version === f} onChoose={() => chooseConcept(f)} label={`Concept ${i + 1} · ${CONCEPT_LABELS[f]}`} />
-            ))}
-          </div>
+      {split ? (
+        // the canvas shrinks to the space left in the frozen column, keeping its 4:5 ratio
+        <div ref={fitRef} className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
+          <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
+            style={fit ? { width: fit.w, height: fit.h } : undefined}
+            className={`block rounded-lg border border-slate-200 shadow-inner ${fit ? "" : "h-auto w-full"}`} />
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-slate-200 shadow-inner">
+          <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" />
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 shadow-inner">
-        <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" />
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <div>
-          <label className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-slate-400">
-            <Type className="h-3 w-3" /> Titre du visuel
-          </label>
-          <input
-            data-testid="visual-title-input"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={() => updateVisual({ title_short: title })}
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20"
-          />
-        </div>
-
-        <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual} />
-
-        <div className="flex flex-wrap gap-2">
-          <button data-testid="visual-upload-logo" onClick={() => logoInput.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
-            <Upload className="h-4 w-4" /> Logo source
-          </button>
-          <button data-testid="visual-toggle-format" onClick={() => setVersion((f) => formats[(formats.indexOf(f) + 1) % formats.length])}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
-            <LayoutTemplate className="h-4 w-4" /> Format
-          </button>
-        </div>
-
-        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-          <button data-testid="visual-download" onClick={download}
-            className="inline-flex items-center gap-1.5 rounded-full bg-forsides-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-forsides-bordeaux">
-            <Download className="h-4 w-4" /> Télécharger PNG
-          </button>
-          <button data-testid="visual-carousel" onClick={() => setShowCarousel(true)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-forsides-red px-4 py-2 text-sm font-semibold text-forsides-red transition-colors hover:bg-forsides-red hover:text-white">
-            <GalleryHorizontal className="h-4 w-4" /> Carrousel PDF
-          </button>
-          {post.caption && (
-            <button data-testid="visual-export-full" onClick={exportFull}
-              className="inline-flex items-center gap-1.5 rounded-full bg-forsides-ink px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-black">
-              <FileDown className="h-4 w-4" /> Exporter le post complet
-            </button>
+      {split ? (
+        <>
+          <div className="mt-3 shrink-0">{actions}</div>
+          {createPortal(
+            <section data-testid="visual-controls" className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
+              <h3 className="mb-3 font-serif text-lg font-bold text-forsides-ink">Réglages du visuel</h3>
+              {controls}
+            </section>,
+            controlsTarget
           )}
+        </>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {controls}
+          <div className="border-t border-slate-100 pt-3">{actions}</div>
         </div>
+      )}
 
-        <input ref={logoInput} type="file" accept="image/*" hidden onChange={onLogoFile} />
-        {showCarousel && <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />}
-      </div>
+      {showCarousel && <CarouselDialog post={localPost} images={images} onClose={() => setShowCarousel(false)} />}
     </section>
   );
 };
