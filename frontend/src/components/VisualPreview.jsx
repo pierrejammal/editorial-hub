@@ -47,7 +47,7 @@ const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, lab
   );
 };
 
-export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, controlsTarget }) => {
+export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen = false }) => {
   const studio = useStudio();
   const post = postProp || studio.post;
   const template = studio.template;
@@ -69,20 +69,23 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
   const logoInput = useRef(null);
 
   // Frozen-column mode: measure the free space and size the canvas to fit it entirely (4:5)
-  const fitRef = useRef(null);
+  // Frozen column: the visual is sized so it fits entirely in the visible height of the column,
+  // leaving the top of "Réglages du visuel" peeking below it (the column scrolls to reach them).
+  const panelRef = useRef(null);
   const [fit, setFit] = useState(null);
   useEffect(() => {
-    const el = fitRef.current;
+    const el = panelRef.current;
     if (!el || typeof ResizeObserver === "undefined") return undefined;
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      if (!width || !height) return setFit(null);
+    const ro = new ResizeObserver(() => {
+      const width = el.clientWidth - 8; // room for the scrollbar
+      const height = el.clientHeight - 52 /* toolbar */ - 56 /* settings peek */;
+      if (width <= 0 || height <= 0) return setFit(null);
       const w = Math.floor(Math.min(width, height * (VW / VH)));
       setFit({ w, h: Math.floor(w * (VH / VW)) });
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [controlsTarget]);
+  }, [frozen]);
 
   useEffect(() => setTitle(v.title_short || post.editorial?.fact || post.meta?.topic || ""), [v.title_short]);
 
@@ -129,7 +132,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
       } catch (e) { /* tainted */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, Boolean(controlsTarget), template]);
+  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, split, template]);
 
   const download = () => {
     try {
@@ -161,8 +164,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
 
   const chooseConcept = (f) => { setVersion(f); updateVisual({ recommended_format: f }); setShowConcepts(false); };
 
-  // Settings (concepts, title, text editor, logo, format). In the Studio they are moved into the
-  // left column (controlsTarget) so the visual on the right always fits the screen, like frozen panes.
+  // Settings (concepts, title, text editor, template, logo, format), shown under the visual.
   const controls = (
     <div className="space-y-3">
       {showConcepts && (
@@ -229,7 +231,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
     </div>
   );
 
-  const split = Boolean(controlsTarget);
+  const split = Boolean(frozen);
 
   const openZoom = () => {
     try { setZoom(canvasRef.current.toDataURL("image/png")); } catch { /* protected logo: no zoom */ }
@@ -247,8 +249,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
   // Frozen column: one compact toolbar + the visual using all the remaining height.
   if (split) {
     return (
-      <section data-testid="visual-preview" className="flex h-full flex-col">
-        <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+      <section ref={panelRef} data-testid="visual-preview" className="h-full overflow-y-auto overscroll-contain pr-2">
+        <div className="sticky top-0 z-10 flex h-[52px] items-center justify-between gap-2 bg-forsides-cream/95 backdrop-blur-sm">
           <div className="flex gap-1 rounded-full bg-white p-1 ring-1 ring-slate-200">
             {formats.map((f) => (
               <button
@@ -285,8 +287,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
           </div>
         </div>
 
-        {/* the canvas takes all the height left in the frozen column, keeping its 4:5 ratio */}
-        <div ref={fitRef} className="flex min-h-0 flex-1 items-start justify-center overflow-hidden">
+        {/* the visual fits the visible height of the column, keeping its 4:5 ratio */}
+        <div className="flex justify-center">
           <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
             onClick={openZoom}
             title="Cliquer pour agrandir"
@@ -294,13 +296,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, control
             className={`block cursor-zoom-in rounded-lg border border-slate-200 bg-white shadow-md ${fit ? "" : "h-auto w-full"}`} />
         </div>
 
-        {createPortal(
-          <section data-testid="visual-controls" className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm">
-            <h3 className="mb-3 font-serif text-lg font-bold text-forsides-ink">Réglages du visuel</h3>
-            {controls}
-          </section>,
-          controlsTarget
-        )}
+        <section data-testid="visual-controls" className="mt-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <h3 className="mb-3 font-serif text-lg font-bold text-forsides-ink">Réglages du visuel</h3>
+          {controls}
+        </section>
 
         {/* Rendered at the page level (portal): inside the frozen column it would sit under the
             sticky top menu, because a sticky element forms its own stacking layer. */}
