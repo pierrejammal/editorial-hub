@@ -66,7 +66,11 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const [sourceLogo, setSourceLogo] = useState(null);
   const [fontsReady, setFontsReady] = useState(false);
   const [showConcepts, setShowConcepts] = useState(false);
-  const [showCarousel, setShowCarousel] = useState(false);
+  // opened right away when "Carrousel" was chosen on the home page
+  const [showCarousel, setShowCarousel] = useState(Boolean(v.open_carousel));
+  useEffect(() => {
+    if (v.open_carousel) updateVisual({ open_carousel: false });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [zoom, setZoom] = useState(null); // full-screen preview (data URL of the canvas)
   const logoInput = useRef(null);
 

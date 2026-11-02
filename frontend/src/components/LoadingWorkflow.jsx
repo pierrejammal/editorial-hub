@@ -31,6 +31,17 @@ const MODES = {
       { label: "Contrôle qualité et préparation du visuel", phase: "finalize", after: 0 },
     ],
   },
+  compose: {
+    title: "Mise en forme de votre texte",
+    subtitle: "L'IA prépare le visuel à partir de vos propres mots",
+    expected: 25,
+    steps: [
+      { label: "Lecture de votre texte", phase: "ai", after: 0 },
+      { label: "Choix du titre et de l'angle", phase: "ai", after: 6 },
+      { label: "Extraction des points clés et des chiffres", phase: "ai", after: 12 },
+      { label: "Préparation du visuel", phase: "finalize", after: 0 },
+    ],
+  },
   analyze: {
     title: "Analyse de l'article",
     subtitle: "Lecture du lien et création du post LinkedIn",

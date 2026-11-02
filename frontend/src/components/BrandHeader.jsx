@@ -28,18 +28,13 @@ export const BrandHeader = () => {
   return (
     <header
       data-testid="brand-header"
-      className="sticky top-0 z-40 border-b border-slate-200/70 bg-forsides-cream/85 backdrop-blur-md"
+      className="sticky top-0 z-40 border-b border-dashed border-slate-300 bg-forsides-cream/90 backdrop-blur-md"
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
-        <Link to="/" data-testid="brand-logo" className="group flex items-center gap-2.5">
-          <img src="/forsides-mark.png" alt="FORSIDES" className="h-9 w-auto" />
-          <span className="leading-none">
-            <span className="block font-sans text-[15px] font-extrabold tracking-[0.14em] text-forsides-ink">
-              FORSIDES
-            </span>
-            <span className="mt-0.5 block font-mono text-[9px] uppercase tracking-[0.34em] text-forsides-slate">
-              News Studio
-            </span>
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-3 sm:px-6">
+        <Link to="/" data-testid="brand-logo" className="group flex shrink-0 items-center gap-3">
+          <img src="/forsides-logo.png" alt="FORSIDES, Solutions actuarielles" className="h-10 w-auto sm:h-11" />
+          <span className="hidden border-l border-slate-300 pl-3 text-[10px] uppercase tracking-[0.28em] text-forsides-slate xl:inline">
+            News Studio
           </span>
         </Link>
 
@@ -60,6 +55,15 @@ export const BrandHeader = () => {
               {l.label}
             </Link>
           ))}
+          <a
+            href="https://www.forsides.fr"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="nav-forsides-site"
+            className="ml-2 whitespace-nowrap rounded-full border border-slate-300 px-3 py-1.5 text-xs text-forsides-slate transition-colors hover:border-forsides-ink hover:bg-forsides-ink hover:text-white"
+          >
+            forsides.fr ↗
+          </a>
           <Link
             to="/settings"
             data-testid="nav-settings"
@@ -101,6 +105,9 @@ export const BrandHeader = () => {
           <Link to="/settings" data-testid="nav-settings-mobile" className={linkCls("/settings", true)}>
             Style maison
           </Link>
+          <a href="https://www.forsides.fr" target="_blank" rel="noopener noreferrer" className={linkCls("", true)}>
+            www.forsides.fr ↗
+          </a>
         </nav>
       )}
     </header>

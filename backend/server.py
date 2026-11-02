@@ -971,6 +971,7 @@ Renvoie STRICTEMENT ce JSON:
 }}
 {CHART_RULES} (Ici, la « source » est le texte de l'utilisateur.)"""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    await progress("finalize")
     normalize_chart(data)
     data["meta"] = data.get("meta") or {}
     data["meta"].setdefault("date_label", french_date_label(None))

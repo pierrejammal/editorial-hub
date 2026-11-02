@@ -117,3 +117,31 @@ body {
     display: contents !important;
   }
 }
+
+/* ---------- Editorial redesign (home page + shared touches) ---------- */
+.rule-dashed { border-top: 1px dashed rgba(15, 23, 42, 0.2); }
+.rule-dashed-dark { border-top: 1px dashed rgba(255, 255, 255, 0.2); }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 0.75rem;
+  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.2em; color: rgba(15, 23, 42, 0.62);
+}
+.eyebrow::before { content: ""; width: 2rem; height: 1px; background: currentColor; }
+.eyebrow-dark { color: rgba(255, 255, 255, 0.62); }
+.cta-ed {
+  display: inline-flex; align-items: center; gap: 0.75rem; padding: 0.95rem 1.9rem;
+  font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.14em; transition: background .3s, color .3s;
+}
+.cta-ed .arr { display: inline-block; transition: transform .4s cubic-bezier(.16,1,.3,1); }
+.cta-ed:hover .arr { transform: translateX(0.4rem); }
+.cta-ed:disabled { opacity: .6; cursor: default; }
+
+/* reveal on scroll (useReveal): visible by default, animated only when JS marks it */
+.rv-armed { opacity: 0; transform: translateY(2rem); }
+.rv-armed.rv-in { opacity: 1; transform: none; transition: opacity .72s cubic-bezier(.16,1,.3,1), transform .72s cubic-bezier(.16,1,.3,1); transition-delay: var(--d, 0ms); }
+@keyframes line-up { from { transform: translateY(110%); opacity: 0; } }
+.line-reveal > span { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: .08em; margin-bottom: -.08em; }
+.line-reveal > span > span { display: inline-block; animation: line-up 1s cubic-bezier(.16,1,.3,1) both; animation-delay: var(--d, 0ms); }
+@media (prefers-reduced-motion: reduce) {
+  .rv-armed { opacity: 1 !important; transform: none !important; }
+  .line-reveal > span > span { animation: none; }
+}
