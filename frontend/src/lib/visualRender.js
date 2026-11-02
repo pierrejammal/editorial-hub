@@ -44,6 +44,62 @@ export function applyTemplate(t) {
   BLUSH = m.background; BRICK = m.accent; BORDEAUX = m.titles; CORAL = m.secondary; INK = m.text; DOT = m.lines;
 }
 export const currentTemplate = () => TPL;
+
+// Template scopes: the base settings apply everywhere; template.byFormat[scope] overrides them for one
+// format ("A" Analyse, "B" Data, "C" Graphique, "K" whole carousel, "Kcover" its cover, "Kinner" its other pages).
+export const TEMPLATE_SCOPES = ["A", "B", "C", "K", "Kcover", "Kinner"];
+export function resolveTemplate(t, scopes = []) {
+  const { byFormat, ...base } = t || {};
+  const out = { ...base };
+  scopes.forEach((s) => Object.assign(out, (byFormat && byFormat[s]) || {}));
+  return out;
+}
+// settings chain of each editing scope (later ones win)
+export const SCOPE_CHAIN = { all: [], A: ["A"], B: ["B"], C: ["C"], K: ["K"], Kcover: ["K", "Kcover"], Kinner: ["K", "Kinner"] };
+// Applies a template change to one scope. "all" = same setting everywhere (per-format exceptions removed);
+// "K" = whole carousel (its cover / inner-page exceptions for these settings removed).
+export function patchTemplate(t, scope, patch) {
+  const byFormat = { ...((t && t.byFormat) || {}) };
+  const drop = (k) => {
+    if (!byFormat[k]) return;
+    const o = { ...byFormat[k] };
+    Object.keys(patch).forEach((key) => delete o[key]);
+    byFormat[k] = o;
+  };
+  if (scope === "all" || !SCOPE_CHAIN[scope]) {
+    Object.keys(byFormat).forEach(drop);
+    return { ...t, ...patch, byFormat };
+  }
+  if (scope === "K") { drop("Kcover"); drop("Kinner"); }
+  byFormat[scope] = { ...(byFormat[scope] || {}), ...patch };
+  return { ...t, byFormat };
+}
+export const carouselScopes = (pageIndex) => ["K", pageIndex === 0 ? "Kcover" : "Kinner"];
+
+// Banner (NEWS…) in the template's shape; returns its right edge. Used by the carousel's inner pages.
+export function drawBanner(ctx, label, x, y, h, px) {
+  if (!label) return x;
+  ctx.font = `${px}px Anton`;
+  const tw = ctx.measureText(label).width;
+  const padX = Math.round(h * 0.2);
+  const w = tw + padX * 2;
+  const shape = TPL.bannerShape;
+  const base = y + h - Math.round((h - px * 0.72) / 2);
+  ctx.textAlign = "left";
+  if (shape === "underline") {
+    ctx.fillStyle = BRICK;
+    ctx.fillText(label, x, base);
+    ctx.fillRect(x, y + h - 4, tw, Math.max(6, h * 0.08));
+    return x + tw;
+  }
+  ctx.fillStyle = BRICK;
+  if (shape === "rounded") { roundRect(ctx, x, y, w, h, h * 0.17); ctx.fill(); }
+  else if (shape === "pill") { roundRect(ctx, x, y, w + h * 0.16, h, h / 2); ctx.fill(); }
+  else ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(label, x + padX + (shape === "pill" ? h * 0.08 : 0), base);
+  return x + w + (shape === "pill" ? h * 0.16 : 0);
+}
 // size multipliers of the banner and the FORSIDES logo, kept in a safe range
 export const tplScale = (k) => {
   const [lo, hi] = k === "logoScale" ? [0.7, 1.8] : [0.7, 1.6];
@@ -881,7 +937,7 @@ export function drawSignature(ctx) {
 
 // opts: { post, version, images:{logoImg, sourceLogoImg} }
 export function renderVisual(ctx, { post, version, images, template }) {
-  if (template !== undefined) applyTemplate(template);
+  if (template !== undefined) applyTemplate(resolveTemplate(template, [version === "B" || version === "C" ? version : "A"]));
   const v = post.visual || {};
   const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
   setRenderLang(langOf(post));

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { askAssistant } from "@/lib/api";
 import { useStudio } from "@/context/StudioContext";
 import { getAssistView, emitAiChange } from "@/lib/assistBus";
+import { resolveTemplate, patchTemplate, SCOPE_CHAIN } from "@/lib/visualRender";
 import { Send, Loader2, Undo2, Sparkles } from "lucide-react";
 
 // Quick requests, adapted to what the preview is showing
@@ -26,7 +27,7 @@ const LABELS = {
   caption: "texte LinkedIn", title_short: "titre", recommended_format: "format", chart: "graphique",
   data_points: "faits clés", key_figure_value: "chiffre clé", key_figure_label: "libellé du chiffre",
   important_date: "échéance", custom: "texte du visuel", insight_line: "phrase finale", subtitle: "sous-titre",
-  hide_source_logo: "logo de la source", hide_date: "date", source_logo_scale: "taille du logo",
+  hide_source_logo: "logo de la source", hide_date: "date", cta_question: "question de fin", cta_text: "phrase d'appel", source_logo_scale: "taille du logo",
   fact: "L'essentiel", what_changes: "Ce qui change", why_important: "Pourquoi c'est important", insight: "À retenir",
   key_figure: "chiffre clé", angle: "angle",
   background: "couleur de fond", accent: "couleur d'accent", titles: "couleur des titres", secondary: "couleur secondaire",
@@ -74,6 +75,13 @@ export const AssistantPanel = ({ post, setPost, onCaption }) => {
     return () => clearInterval(id);
   }, []);
 
+  const viewTemplate = () => {
+    const v = getAssistView();
+    const scope = v.format === "K" ? (v.page === 0 ? "Kcover" : "Kinner") : v.format;
+    const { byFormat, ...flat } = resolveTemplate(studio.template, SCOPE_CHAIN[scope] || []); // eslint-disable-line no-unused-vars
+    return flat;
+  };
+
   const send = async (text) => {
     const message = (text ?? msg).trim();
     if (!message || busy) return;
@@ -84,7 +92,8 @@ export const AssistantPanel = ({ post, setPost, onCaption }) => {
     setPost((p) => ({ ...p, chat: [...(p.chat || []), { role: "user", content: message }].slice(-30) }));
     try {
       const { reply, changes = {} } = await askAssistant(post, message, history, {
-        view: getAssistView(), template: studio.template, onProgress: setStep,
+        // the AI sees the template as it is on what the user is looking at (format / carousel page)
+        view: getAssistView(), template: viewTemplate(), onProgress: setStep,
       });
       const keys = [
         ...(changes.caption ? ["caption"] : []),
@@ -92,14 +101,19 @@ export const AssistantPanel = ({ post, setPost, onCaption }) => {
         ...Object.keys(changes.editorial || {}),
         ...Object.keys(changes.template || {}),
       ];
+      const SCOPE_LABEL = { all: "tous les formats", A: "format Analyse", B: "format Data", C: "format Graphique",
+        K: "tout le carrousel", Kcover: "couverture du carrousel", Kinner: "pages intérieures du carrousel" };
       const touched = keys.length > 0;
       const labels = [...new Set(keys.map((k) => LABELS[k] || k))];
+      if (changes.template && changes.template_scope) labels.push(`(modèle : ${SCOPE_LABEL[changes.template_scope] || changes.template_scope})`);
       const summary = touched ? `\n\n✓ Modifié : ${labels.join(", ")}` : "\n\nAucune modification appliquée.";
       if (touched) {
         setUndo({ caption: post.caption, visual: post.visual, editorial: post.editorial,
           template: changes.template && studio.template ? studio.template : null });
       }
-      if (changes.template && studio.setTemplate) studio.setTemplate((t) => ({ ...t, ...changes.template }));
+      if (changes.template && studio.setTemplate) {
+        studio.setTemplate((t) => patchTemplate(t, changes.template_scope || "all", changes.template));
+      }
       setPost((p) => ({
         ...p,
         caption: changes.caption ?? p.caption,

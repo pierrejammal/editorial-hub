@@ -21,7 +21,7 @@ const FIELD_PAGE = [
   [["chart", "data_points", "important_date"], "data"],
   [["key_figure_value", "key_figure_label", "fact", "custom", "key_figure"], "essential"],
   [["what_changes", "why_important"], "points"],
-  [["insight", "insight_line"], "takeaway"],
+  [["insight", "insight_line", "cta_question", "cta_text"], "takeaway"],
   [["title_short", "subtitle"], "cover"],
 ];
 export const pageKindForFields = (fields) => {

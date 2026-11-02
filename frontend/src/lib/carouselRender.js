@@ -3,7 +3,7 @@ import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
   clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
-  applyTemplate, currentTemplate, tplScale, titleFontFamily, drawBullet,
+  applyTemplate, currentTemplate, tplScale, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet,
 } from "@/lib/visualRender";
 
 const CL = {
@@ -46,14 +46,7 @@ function miniHeader(ctx, images, n, total) {
   const label = String(currentTemplate().bannerText || "").trim().slice(0, 24);
   const bs = tplScale("bannerScale");
   const bh = Math.round(70 * bs);
-  ctx.font = `${Math.round(56 * bs)}px Anton`;
-  const tw = ctx.measureText(label).width;
-  if (label) {
-    ctx.fillStyle = BRICK;
-    ctx.fillRect(PAD, 60, tw + 28 * bs, bh);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(label, PAD + 14 * bs, 60 + bh - 13 * bs);
-  }
+  drawBanner(ctx, label, PAD, 60, bh, Math.round(56 * bs)); // same shape as the template's banner
   const logo = images?.logoImg;
   let lh = 0;
   if (logo) {
@@ -86,7 +79,7 @@ function bigLabel(ctx, text, y) {
   ctx.fillStyle = BRICK;
   ctx.fillRect(PAD, y - 34, 14, 40);
   ctx.fillStyle = BORDEAUX;
-  ctx.font = "800 44px Outfit";
+  ctx.font = `800 44px ${titleFontFamily()}`;
   ctx.fillText(text, PAD + 34, y);
 }
 
@@ -354,10 +347,10 @@ function takeawayPage(ctx, d, images, n, total) {
   drawRule(ctx, VH - 400);
   ctx.fillStyle = INK;
   ctx.font = "600 34px Outfit";
-  ctx.fillText(L.ctaQ, PAD, VH - 320);
+  ctx.fillText(clean(d.v.cta_question) || L.ctaQ, PAD, VH - 320);
   ctx.fillStyle = "#4a3a36";
   ctx.font = "400 30px Outfit";
-  ctx.fillText(L.cta, PAD, VH - 270);
+  ctx.fillText(clean(d.v.cta_text) || L.cta, PAD, VH - 270);
   drawSignature(ctx);
 }
 
@@ -392,13 +385,16 @@ export const carouselPageLabel = (kind) => PAGE_LABELS[kind] || "";
 
 /** Renders each carousel page on its own canvas (created with `makeCanvas`). */
 export function renderCarousel(post, images, makeCanvas, template) {
-  if (template !== undefined) applyTemplate(template);
+  // template: the full template (with byFormat); each page uses the carousel's settings, and the cover
+  // or the inner pages their own ones on top
+  const full = template !== undefined ? template : currentTemplate();
   const lang = langOf(post);
   L = CL[lang];
   setRenderLang(lang);
   const plan = planCarousel(post);
   return plan.map((draw, i) => {
     const c = makeCanvas(VW, VH);
+    applyTemplate(resolveTemplate(full, carouselScopes(i)));
     draw(c.getContext("2d"), images, i + 1, plan.length);
     try { c.pageKind = draw.kind; } catch { /* read-only canvas object */ }
     return c;

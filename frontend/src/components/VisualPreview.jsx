@@ -15,7 +15,7 @@ import {
 
 // "K" = carousel: the preview shows its pages one by one, download gives the PDF
 const FORMAT_LABELS = { A: "Analyse", B: "Data", C: "Graphique", K: "Carrousel" };
-const CONCEPT_LABELS = { A: "Analyse", B: "Data / Insight", C: "Graphique" };
+const CONCEPT_LABELS = { A: "Analyse", B: "Data / Insight", C: "Graphique", K: "Carrousel" };
 const initialFormat = (post) => {
   const f = post.visual?.recommended_format;
   if (post.visual?.open_carousel || f === "K") return "K";
@@ -32,7 +32,14 @@ const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, lab
     const c = ref.current;
     if (!c) return;
     // a drawing bug must never crash the whole page: log it and keep the app usable
-    try { renderVisual(c.getContext("2d"), { post, version, images, template }); } catch (e) { console.error("concept render failed", e); }
+    try {
+      if (version === "K") { // carousel concept: its cover
+        const [cover] = renderCarousel(post, images, (w, h) => { const x = document.createElement("canvas"); x.width = w; x.height = h; return x; }, template);
+        const ctx = c.getContext("2d");
+        ctx.clearRect(0, 0, VW, VH);
+        ctx.drawImage(cover, 0, 0);
+      } else renderVisual(c.getContext("2d"), { post, version, images, template });
+    } catch (e) { console.error("concept render failed", e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.visual, post.meta, post.editorial, images, fontsReady, version, template]);
   return (
@@ -64,9 +71,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const [version, setVersion] = useState(() => initialFormat(post));
   const chartOk = hasChart(post);
   const formats = chartOk ? ["A", "B", "C", "K"] : ["A", "B", "K"];
-  const concepts = formats.filter((f) => f !== "K");
+  const concepts = formats; // the carousel is a concept too
   const [carPage, setCarPage] = useState(0);
   const [carCount, setCarCount] = useState(0);
+  const [carKinds, setCarKinds] = useState([]);
   const isCarousel = version === "K";
   // "Mis à jour par l'IA": flash + badge on the preview, and the carousel page to jump to
   const [aiFlash, setAiFlash] = useState(null);
@@ -155,6 +163,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         const pages = renderCarousel(localPost, images, (w, h) => { const x = document.createElement("canvas"); x.width = w; x.height = h; return x; }, template);
         const n = pages.length;
         setCarCount(n);
+        const kinds = pages.map((p) => p.pageKind);
+        setCarKinds((old) => (old.join() === kinds.join() ? old : kinds));
         let pg = Math.min(carPage, n - 1);
         // the AI just changed something: show the page where it appears
         if (jumpKindRef.current) {
@@ -250,7 +260,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
           <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-slate-400">
             Choisissez le concept le plus fort
           </p>
-          <div className={`grid gap-3 ${concepts.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+          <div className={`grid gap-3 ${concepts.length === 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4"}`}>
             {concepts.map((f, i) => (
               <ConceptThumb key={f} post={localPost} version={f} images={images} fontsReady={fontsReady} template={template}
                 active={version === f} onChoose={() => chooseConcept(f)} label={`Concept ${i + 1} · ${CONCEPT_LABELS[f]}`} />
@@ -272,9 +282,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         />
       </div>
 
-      <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual} />
+      <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual}
+        carKinds={carKinds} carPage={carPage} onCarPage={setCarPage} />
 
-      <TemplateEditor />
+      <TemplateEditor version={version} pageIndex={carPage} />
 
       <div className="flex flex-wrap gap-2">
         <button data-testid="visual-upload-logo" onClick={() => logoInput.current?.click()}

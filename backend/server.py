@@ -1223,7 +1223,7 @@ class AssistReq(BaseModel):
 
 ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure_label", "important_date",
                       "data_points", "insight_line", "chart", "recommended_format", "custom",
-                      "hide_source_logo", "source_logo_scale", "hide_date"}
+                      "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text"}
 ASSIST_TEMPLATE_COLORS = {"background", "accent", "titles", "secondary", "text", "lines"}
 ASSIST_TEMPLATE_CHOICES = {"bannerShape": {"rect", "rounded", "pill", "underline"},
                            "bulletShape": {"square", "circle", "dash"},
@@ -1354,6 +1354,11 @@ Ce que tu peux modifier:
 - la taille du bandeau NEWS: template.bannerScale (0.7 à 1.6, défaut 1) et la taille du logo FORSIDES:
   template.logoScale (0.7 à 1.8, défaut 1). Valables pour le visuel ET le carrousel. Ne confonds pas avec source_logo_scale.
   « Plus grand » sans précision = environ +25 %;
+- PORTÉE d'un changement de template: renvoie "template_scope" = "A" | "B" | "C" (ce format seulement),
+  "K" (tout le carrousel), "Kcover" (couverture du carrousel seulement), "Kinner" (pages du carrousel sauf la couverture)
+  ou "all" (tous les formats). Par défaut, uniquement ce que l'utilisateur regarde (format, ou dans le carrousel la
+  couverture si page 1, sinon les pages intérieures). « partout », « toutes les pages » → "K" ou "all" selon le contexte;
+- carrousel, dernière page: visual.cta_question (question de fin, ≤ 60 car.) et visual.cta_text (phrase d'appel, ≤ 80 car.);
 - la date du post (en-tête et ligne source): visual.hide_date (true = masquée);
 - le template (couleurs hex #RRGGBB: background, accent, titles, secondary, text, lines; bannerShape rect|rounded|pill|underline;
   bulletShape square|circle|dash; ruleStyle bar|thin|none; titleFont Outfit|"Playfair Display"; bannerText; showDate; showSignature; signature)
@@ -1384,7 +1389,7 @@ Règles:
 Si "changes" est vide, ta réponse NE DOIT PAS dire que tu as modifié quelque chose.
 Renvoie STRICTEMENT ce JSON:
 {{"reply": "1 à 2 phrases en français : ce que tu as changé (ou pourquoi tu ne peux pas)",
-  "changes": {{"caption": "uniquement si modifié", "visual": {{"seulement les champs modifiés": "..."}}, "editorial": {{"seulement les champs modifiés": "..."}}, "template": {{"seulement les champs modifiés": "..."}}}}}}"""
+  "changes": {{"caption": "uniquement si modifié", "visual": {{"seulement les champs modifiés": "..."}}, "editorial": {{"seulement les champs modifiés": "..."}}, "template": {{"seulement les champs modifiés": "..."}}, "template_scope": "si template modifié"}}}}"""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
     await progress("finalize")
     ch = data.get("changes") if isinstance(data.get("changes"), dict) else {}
@@ -1427,6 +1432,14 @@ Renvoie STRICTEMENT ce JSON:
     tpl = _clean_template_changes(ch.get("template"))
     if tpl:
         out["template"] = tpl
+        # which format(s) the template change applies to: by default the one being viewed
+        scope = ch.get("template_scope")
+        if scope not in ("all", "A", "B", "C", "K", "Kcover", "Kinner"):
+            fmt = str((req.view or {}).get("format") or "A")
+            scope = ("Kcover" if int((req.view or {}).get("page") or 0) == 0 else "Kinner") if fmt == "K" else fmt
+            if scope not in ("A", "B", "C", "Kcover", "Kinner"):
+                scope = "A"
+        out["template_scope"] = scope
     reply = str(data.get("reply") or "C'est fait.").strip()[:600]
     if not out:
         # never let the assistant claim a change that was not applied (invented field, fixed label…)
@@ -1435,7 +1448,7 @@ Renvoie STRICTEMENT ce JSON:
             tried += [f"visual.{k}" for k in ch["visual"] if k not in ASSIST_VISUAL_KEYS]
         if isinstance(ch.get("editorial"), dict):
             tried += [f"editorial.{k}" for k in ch["editorial"] if k not in ASSIST_EDITORIAL_KEYS]
-        tried += [k for k in ch if k not in ("caption", "visual", "editorial", "template")]
+        tried += [k for k in ch if k not in ("caption", "visual", "editorial", "template", "template_scope")]
         claims = re.search(r"\b(j'ai|c'est fait|modifié|remplacé|ajouté|changé|mis à jour|appliqué)\b", reply, re.I)
         if tried or (claims and not re.search(r"\b(ne peux|impossible|pas pu|n'ai pas)\b", reply, re.I)):
             reply = ("Je n'ai rien pu modifier : ce que vous demandez n'est pas un texte du post mais un élément fixe "
@@ -1710,8 +1723,10 @@ async def get_template():
     return doc
 
 
-@api_router.put("/settings/template")
-async def put_template(req: Dict[str, Any]):
+TEMPLATE_FORMAT_SCOPES = {"A", "B", "C", "K", "Kcover", "Kinner"}
+
+
+def _clean_template(req: Any) -> Dict[str, Any]:
     doc = {k: v for k, v in (req or {}).items() if k in TEMPLATE_KEYS and isinstance(v, (str, bool, int, float))}
     for k, v in list(doc.items()):
         if k in TEMPLATE_SCALES:
@@ -1724,6 +1739,17 @@ async def put_template(req: Dict[str, Any]):
             doc[k] = v.strip()[:60]
         elif not isinstance(v, bool):
             doc.pop(k)
+    return doc
+
+
+@api_router.put("/settings/template")
+async def put_template(req: Dict[str, Any]):
+    doc = _clean_template(req)
+    # per-format exceptions (Analyse, Data, Graphique, carousel / its cover / its inner pages)
+    by = (req or {}).get("byFormat")
+    if isinstance(by, dict):
+        clean_by = {k: _clean_template(v) for k, v in by.items() if k in TEMPLATE_FORMAT_SCOPES and isinstance(v, dict)}
+        doc["byFormat"] = {k: v for k, v in clean_by.items() if v}
     await db.settings.replace_one({"_id": "template"}, {"_id": "template", **doc}, upsert=True)
     return doc
 

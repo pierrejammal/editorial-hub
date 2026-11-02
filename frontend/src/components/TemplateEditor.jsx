@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import { saveTemplate } from "@/lib/api";
-import { DEFAULT_TEMPLATE } from "@/lib/visualRender";
+import { DEFAULT_TEMPLATE, resolveTemplate, patchTemplate, SCOPE_CHAIN as CHAIN } from "@/lib/visualRender";
 import { Palette, ChevronDown, Save, RotateCcw, Loader2 } from "lucide-react";
 
 const COLORS = [
@@ -40,13 +40,31 @@ const Label = ({ children }) => (
   <p className="mb-1.5 font-mono text-[10px] uppercase tracking-widest text-slate-400">{children}</p>
 );
 
+const FORMAT_NAMES = { A: "Analyse", B: "Data", C: "Graphique" };
+
 // Live editing of the visual template: every change redraws the preview immediately.
-// "Enregistrer comme modèle maison" stores it on the server for every post and every user.
-export const TemplateEditor = () => {
+// Changes apply to the format being viewed (or to all formats, or in the carousel to its cover or
+// inner pages only). "Enregistrer comme modèle maison" stores it on the server for every post and every user.
+export const TemplateEditor = ({ version = "A", pageIndex = 0 }) => {
   const { template, setTemplate, savedTemplate, setSavedTemplate } = useStudio();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const set = (patch) => setTemplate((t) => ({ ...t, ...patch }));
+  const isK = version === "K";
+  const defaultScope = isK ? (pageIndex === 0 ? "Kcover" : "Kinner") : version;
+  const [scope, setScope] = useState(defaultScope);
+  useEffect(() => setScope(defaultScope), [defaultScope]); // follows the format / carousel page being viewed
+  const scopes = isK
+    ? [{ v: "Kcover", l: "Couverture" }, { v: "Kinner", l: "Pages intérieures" }, { v: "K", l: "Tout le carrousel" }, { v: "all", l: "Tous les formats" }]
+    : [{ v: version, l: `Format ${FORMAT_NAMES[version] || ""}` }, { v: "all", l: "Tous les formats" }];
+  const vals = { ...DEFAULT_TEMPLATE, ...resolveTemplate(template, CHAIN[scope] || []) };
+  const overridden = Object.entries(template.byFormat || {}).filter(([, o]) => o && Object.keys(o).length).map(([k]) => k);
+
+  const set = (patch) => setTemplate((t) => patchTemplate(t, scope, patch));
+  const resetScope = () => setTemplate((t) => {
+    const byFormat = { ...(t.byFormat || {}) };
+    delete byFormat[scope];
+    return { ...t, byFormat };
+  });
   const dirty = JSON.stringify(template) !== JSON.stringify(savedTemplate);
 
   const save = async () => {
@@ -81,7 +99,31 @@ export const TemplateEditor = () => {
 
       {open && (
         <div data-testid="template-editor" className="space-y-4 px-3 pb-4">
-          <p className="text-xs text-slate-500">Chaque changement s'affiche en direct sur le visuel.</p>
+          <div>
+            <Label>S'applique à</Label>
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="template-scope">
+              {scopes.map((o) => (
+                <button key={o.v} type="button" data-testid={`template-scope-${o.v}`} onClick={() => setScope(o.v)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    scope === o.v ? "bg-forsides-red text-white" : "bg-slate-100 text-forsides-slate hover:bg-slate-200"}`}>
+                  {o.l}
+                </button>
+              ))}
+              {scope !== "all" && overridden.includes(scope) && (
+                <button type="button" data-testid="template-scope-reset" onClick={resetScope}
+                  className="inline-flex items-center gap-1 px-2 text-xs text-forsides-slate hover:text-forsides-red">
+                  <RotateCcw className="h-3 w-3" /> Aligner sur les autres formats
+                </button>
+              )}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              {scope === "all" ? "Le changement s'applique à tous les formats et à toutes les pages du carrousel."
+                : scope === "Kcover" ? "Seule la première page du carrousel change."
+                : scope === "Kinner" ? "Toutes les pages du carrousel sauf la couverture changent."
+                : scope === "K" ? "Toutes les pages du carrousel changent."
+                : `Seul le format ${FORMAT_NAMES[scope]} change.`} Aperçu en direct.
+            </p>
+          </div>
 
           <div>
             <Label>Palettes</Label>
@@ -92,7 +134,7 @@ export const TemplateEditor = () => {
                   <button
                     key={p.name}
                     type="button"
-                    onClick={() => set({ ...DEFAULT_TEMPLATE, ...p.t, bannerText: template.bannerText, signature: template.signature })}
+                    onClick={() => set(Object.fromEntries(COLORS.map(({ key }) => [key, t[key]])))}
                     className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-forsides-ink hover:border-forsides-red"
                   >
                     <span className="flex">
@@ -130,7 +172,7 @@ export const TemplateEditor = () => {
               <Label>Mot du bandeau</Label>
               <input
                 data-testid="template-banner-text"
-                value={template.bannerText}
+                value={vals.bannerText}
                 maxLength={24}
                 onChange={(e) => set({ bannerText: e.target.value.toUpperCase() })}
                 placeholder="NEWS, VEILLE, ACTU… (vide = pas de bandeau)"
@@ -141,7 +183,7 @@ export const TemplateEditor = () => {
               <Label>Signature</Label>
               <input
                 data-testid="template-signature"
-                value={template.signature}
+                value={vals.signature}
                 maxLength={60}
                 onChange={(e) => set({ signature: e.target.value })}
                 className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm outline-none focus:border-forsides-red"
@@ -167,30 +209,30 @@ export const TemplateEditor = () => {
           </div>
           <div>
             <Label>Forme du bandeau</Label>
-            <Choice testid="template-banner-shape" value={template.bannerShape} onChange={(v) => set({ bannerShape: v })}
+            <Choice testid="template-banner-shape" value={vals.bannerShape} onChange={(v) => set({ bannerShape: v })}
               options={[{ value: "rect", label: "Rectangle" }, { value: "rounded", label: "Arrondi" }, { value: "pill", label: "Pastille" }, { value: "underline", label: "Souligné" }]} />
           </div>
           <div>
             <Label>Puces</Label>
-            <Choice testid="template-bullets" value={template.bulletShape} onChange={(v) => set({ bulletShape: v })}
+            <Choice testid="template-bullets" value={vals.bulletShape} onChange={(v) => set({ bulletShape: v })}
               options={[{ value: "square", label: "■ Carrées" }, { value: "circle", label: "● Rondes" }, { value: "dash", label: "— Tirets" }]} />
           </div>
           <div>
             <Label>Filet sous le titre</Label>
-            <Choice testid="template-rule" value={template.ruleStyle} onChange={(v) => set({ ruleStyle: v })}
+            <Choice testid="template-rule" value={vals.ruleStyle} onChange={(v) => set({ ruleStyle: v })}
               options={[{ value: "bar", label: "Barre + filet" }, { value: "thin", label: "Filet fin" }, { value: "none", label: "Aucun" }]} />
           </div>
           <div>
             <Label>Police des titres</Label>
-            <Choice testid="template-font" value={template.titleFont} onChange={(v) => set({ titleFont: v })}
+            <Choice testid="template-font" value={vals.titleFont} onChange={(v) => set({ titleFont: v })}
               options={[{ value: "Outfit", label: "Moderne (Outfit)" }, { value: "Playfair Display", label: "Éditoriale (Playfair)" }]} />
           </div>
           <div className="flex flex-wrap gap-4 text-sm text-forsides-ink">
             <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={template.showDate} onChange={(e) => set({ showDate: e.target.checked })} /> Afficher la date
+              <input type="checkbox" checked={vals.showDate} onChange={(e) => set({ showDate: e.target.checked })} /> Afficher la date
             </label>
             <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={template.showSignature} onChange={(e) => set({ showSignature: e.target.checked })} /> Afficher la signature
+              <input type="checkbox" checked={vals.showSignature} onChange={(e) => set({ showSignature: e.target.checked })} /> Afficher la signature
             </label>
           </div>
 
