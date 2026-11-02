@@ -326,14 +326,26 @@ function pointsPage(ctx, d, images, n, total, points, heading) {
 function takeawayPage(ctx, d, images, n, total) {
   const top = miniHeader(ctx, images, n, total);
   bigLabel(ctx, L.takeaway, top + 90);
-  const text = d.takeaway;
-  const area = { top: top + 160, bottom: VH - 470 };
+  // quotes are drawn by the page itself (opening and closing), so strip any typed in the text
+  const text = String(d.takeaway || "").replace(/^[\s«»“”"']+|[\s«»“”"']+$/g, "");
+  const area = { top: top + 175, bottom: VH - 440 };
+  const QH = 120; // room taken by each quote mark
+  const b = fitBlock(ctx, text, 700, 64, 34, area.bottom - area.top - QH * 2, 1.25);
+  const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
+  const blockH = QH + lines * b.lh + QH;
+  // the quote + text block is centred in the free space, so there is no hole under the opening quote
+  const y0 = area.top + Math.max(0, (area.bottom - area.top - blockH) / 2);
   ctx.fillStyle = BRICK;
   ctx.font = "220px Anton";
-  ctx.fillText("“", PAD - 10, area.top + 170);
-  const b = fitBlock(ctx, text, 700, 64, 36, area.bottom - area.top - 140, 1.25);
+  ctx.fillText("“", PAD - 10, y0 + 175);
   ctx.fillStyle = BORDEAUX;
-  drawParagraph(ctx, b.text, PAD, area.top + 160 + b.px, MAXW, b.lh, false, b.maxLines);
+  ctx.font = `700 ${b.px}px Outfit`;
+  drawParagraph(ctx, b.text, PAD, y0 + QH + b.px, MAXW, b.lh, false, b.maxLines);
+  ctx.fillStyle = BRICK;
+  ctx.font = "220px Anton";
+  ctx.textAlign = "right";
+  ctx.fillText("”", VW - PAD + 10, y0 + QH + lines * b.lh + 175);
+  ctx.textAlign = "left";
   drawRule(ctx, VH - 400);
   ctx.fillStyle = INK;
   ctx.font = "600 34px Outfit";

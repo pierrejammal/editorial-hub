@@ -1164,6 +1164,50 @@ def _clean_template_changes(t: Any) -> Dict[str, Any]:
     return out
 
 
+def _custom_rule(post: Dict[str, Any]) -> str:
+    cu = (post.get("visual") or {}).get("custom")
+    if not isinstance(cu, dict) or not (cu.get("summary") or cu.get("points")):
+        return "Le visuel affiche les champs editorial.* (pas de texte mis en forme)."
+    return ("ATTENTION: ce visuel a un texte mis en forme (visual.custom). C'est LUI qui est affiché, pas editorial: "
+            "visual.custom.summary = « L'essentiel »; visual.custom.points = les points (le point dont le label contient "
+            "« retenir » = page « À retenir »). Pour changer ces textes, renvoie visual.custom COMPLET "
+            "(summary + TOUS les points, modifiés ou non), jamais editorial.")
+
+
+def _merge_custom(old: Any, new: Any) -> Any:
+    """The AI sometimes returns only the point it changed: keep the others instead of losing them."""
+    if not isinstance(new, dict) or not isinstance(old, dict):
+        return new
+    merged = {**old, **new}
+    op, np_ = old.get("points"), new.get("points")
+    if isinstance(op, list) and isinstance(np_, list) and len(np_) < len(op):
+        by_label = {str(p.get("label", "")).strip().lower(): p for p in np_ if isinstance(p, dict)}
+        merged["points"] = [by_label.pop(str(p.get("label", "")).strip().lower(), p) if isinstance(p, dict) else p for p in op]
+        merged["points"] += list(by_label.values())
+    return merged
+
+
+def _mirror_into_custom(old: Any, ed: Dict[str, str]) -> Any:
+    """editorial.* changed while the visual shows visual.custom: copy the change where it is displayed."""
+    if not isinstance(old, dict) or not ed:
+        return None
+    new = json.loads(json.dumps(old))
+    changed = False
+    if "fact" in ed and isinstance(new.get("summary"), str):
+        new["summary"] = ed["fact"]
+        changed = True
+    pts = new.get("points") if isinstance(new.get("points"), list) else []
+    for key, rx in (("insight", r"retenir|takeaway"), ("what_changes", r"change"),
+                    ("why_important", r"important|pourquoi|why|enjeu")):
+        if key in ed:
+            for pt in pts:
+                if isinstance(pt, dict) and re.search(rx, str(pt.get("label", "")), re.I):
+                    pt["text"] = ed[key]
+                    changed = True
+                    break
+    return new if changed else None
+
+
 def _view_line(view: Dict[str, Any]) -> str:
     f = FORMAT_NAMES.get(str(view.get("format") or ""), "")
     if not f:
@@ -1233,8 +1277,8 @@ Règles:
   editorial.fact (ou visual.custom.summary) + chiffre clé + visual.data_points; page 3 « Les chiffres » =
   visual.chart ou data_points; page 4 « Décryptage » = les points; page 5 « À retenir » = editorial.insight.
   Pour enrichir une page du carrousel, complète les champs correspondants (sans inventer).
-- Si visual.custom existe, c'est LUI qui est affiché à la place de L'essentiel et des points: modifie visual.custom
-  ({{"summary": "...", "points": [{{"label": "...", "text": "..."}}]}}) plutôt que editorial.
+- {_custom_rule(post)}
+- La page « À retenir » dessine elle-même les guillemets ouvrants et fermants: n'en mets pas dans le texte.
 - Textes du visuel courts: titre 8 à 16 mots, points 1 phrase, data_points 3 à 8 mots.
 - Le caption (texte LinkedIn) reste en texte brut, sans markdown. Langue du post: {_assist_state(post)["langue"]}.
 - Si la demande est impossible sans inventer (chiffre absent de la source…), ne change rien et explique-le dans reply.
@@ -1268,10 +1312,17 @@ Renvoie STRICTEMENT ce JSON:
             vis.pop("chart")
         elif "recommended_format" not in vis:
             vis["recommended_format"] = (post.get("visual") or {}).get("recommended_format") or "C"
-    if vis:
-        out["visual"] = vis
+    old_custom = (post.get("visual") or {}).get("custom")
+    if "custom" in vis:
+        vis["custom"] = _merge_custom(old_custom, vis["custom"])
     ed = {k: v for k, v in (ch.get("editorial") or {}).items() if k in ASSIST_EDITORIAL_KEYS and isinstance(v, str)} \
         if isinstance(ch.get("editorial"), dict) else {}
+    if ed and "custom" not in vis:
+        mirrored = _mirror_into_custom(old_custom, ed)
+        if mirrored:
+            vis["custom"] = mirrored
+    if vis:
+        out["visual"] = vis
     if ed:
         out["editorial"] = ed
     tpl = _clean_template_changes(ch.get("template"))
