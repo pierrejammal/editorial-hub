@@ -356,17 +356,22 @@ export function planCarousel(post) {
   const hasData = hasChart(post) || clean(v.important_date) || (v.data_points || []).filter((x) => clean(x)).length >= 2;
   const d = { post, v, title, content, takeaway, factsFree: !hasData };
 
-  const pages = [(ctx, im, n, t) => coverPage(ctx, d, im, n, t)];
-  if (content.summary) pages.push((ctx, im, n, t) => essentialPage(ctx, d, im, n, t));
-  if (hasData) pages.push((ctx, im, n, t) => dataPage(ctx, d, im, n, t));
+  const tag = (kind, fn) => Object.assign(fn, { kind });
+  const pages = [tag("cover", (ctx, im, n, t) => coverPage(ctx, d, im, n, t))];
+  if (content.summary) pages.push(tag("essential", (ctx, im, n, t) => essentialPage(ctx, d, im, n, t)));
+  if (hasData) pages.push(tag("data", (ctx, im, n, t) => dataPage(ctx, d, im, n, t)));
   if (points.length) {
     // one point per page when there are few pages, otherwise grouped
-    if (points.length <= 2 || pages.length >= 3) pages.push((ctx, im, n, t) => pointsPage(ctx, d, im, n, t, points.slice(0, 3), L.analysis));
-    else points.slice(0, 3).forEach((p) => pages.push((ctx, im, n, t) => pointsPage(ctx, d, im, n, t, [p], p.label)));
+    if (points.length <= 2 || pages.length >= 3) pages.push(tag("points", (ctx, im, n, t) => pointsPage(ctx, d, im, n, t, points.slice(0, 3), L.analysis)));
+    else points.slice(0, 3).forEach((p) => pages.push(tag("points", (ctx, im, n, t) => pointsPage(ctx, d, im, n, t, [p], p.label))));
   }
-  if (takeaway) pages.push((ctx, im, n, t) => takeawayPage(ctx, d, im, n, t));
+  if (takeaway) pages.push(tag("takeaway", (ctx, im, n, t) => takeawayPage(ctx, d, im, n, t)));
   return pages.slice(0, 6);
 }
+
+const PAGE_LABELS = { cover: "Couverture", essential: "L'essentiel", data: "Les chiffres", points: "Décryptage", takeaway: "À retenir" };
+export const carouselPageKinds = (post) => planCarousel(post).map((f) => f.kind);
+export const carouselPageLabel = (kind) => PAGE_LABELS[kind] || "";
 
 /** Renders each carousel page on its own canvas (created with `makeCanvas`). */
 export function renderCarousel(post, images, makeCanvas, template) {
@@ -378,6 +383,7 @@ export function renderCarousel(post, images, makeCanvas, template) {
   return plan.map((draw, i) => {
     const c = makeCanvas(VW, VH);
     draw(c.getContext("2d"), images, i + 1, plan.length);
+    try { c.pageKind = draw.kind; } catch { /* read-only canvas object */ }
     return c;
   });
 }

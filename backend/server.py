@@ -1131,10 +1131,47 @@ class AssistReq(BaseModel):
     post: Dict[str, Any]
     message: str
     history: List[Dict[str, str]] = Field(default_factory=list)
+    view: Dict[str, Any] = Field(default_factory=dict)       # what the user is looking at (format, carousel page)
+    template: Dict[str, Any] = Field(default_factory=dict)   # current visual template (colours, shapes)
 
 
 ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure_label", "important_date",
-                      "data_points", "insight_line", "chart", "recommended_format", "custom"}
+                      "data_points", "insight_line", "chart", "recommended_format", "custom",
+                      "hide_source_logo", "source_logo_scale"}
+ASSIST_TEMPLATE_COLORS = {"background", "accent", "titles", "secondary", "text", "lines"}
+ASSIST_TEMPLATE_CHOICES = {"bannerShape": {"rect", "rounded", "pill", "underline"},
+                           "bulletShape": {"square", "circle", "dash"},
+                           "ruleStyle": {"bar", "thin", "none"},
+                           "titleFont": {"Outfit", "Playfair Display"}}
+FORMAT_NAMES = {"A": "Analyse", "B": "Data", "C": "Graphique", "K": "Carrousel"}
+
+
+def _clean_template_changes(t: Any) -> Dict[str, Any]:
+    if not isinstance(t, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for k, v in t.items():
+        if k in ASSIST_TEMPLATE_COLORS and isinstance(v, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", v.strip()):
+            out[k] = v.strip()
+        elif k in ASSIST_TEMPLATE_CHOICES and v in ASSIST_TEMPLATE_CHOICES[k]:
+            out[k] = v
+        elif k in ("showDate", "showSignature") and isinstance(v, bool):
+            out[k] = v
+        elif k == "bannerText" and isinstance(v, str) and 0 < len(v.strip()) <= 14:
+            out[k] = v.strip()
+        elif k == "signature" and isinstance(v, str) and len(v.strip()) <= 60:
+            out[k] = v.strip()
+    return out
+
+
+def _view_line(view: Dict[str, Any]) -> str:
+    f = FORMAT_NAMES.get(str(view.get("format") or ""), "")
+    if not f:
+        return "(inconnu)"
+    if view.get("format") == "K" and view.get("pageCount"):
+        return (f"format Carrousel, page {int(view.get('page') or 0) + 1}/{view.get('pageCount')}"
+                f" « {view.get('pageLabel') or ''} »")
+    return f"format {f}"
 ASSIST_EDITORIAL_KEYS = {"fact", "what_changes", "why_important", "insight", "key_figure", "angle"}
 
 
@@ -1169,7 +1206,23 @@ TEXTE DE LA SOURCE (référence pour les faits; ne cite aucun chiffre ou date ab
 CONVERSATION PRÉCÉDENTE:
 {history or "(aucune)"}
 
+L'UTILISATEUR REGARDE EN CE MOMENT: {_view_line(req.view or {})}
+(« ici », « cette page », « ce visuel » désignent ce qu'il regarde.)
+
+TEMPLATE ACTUEL (couleurs/formes du visuel): {json.dumps({k: (req.template or {}).get(k) for k in list(ASSIST_TEMPLATE_COLORS) + list(ASSIST_TEMPLATE_CHOICES) + ["bannerText", "showDate", "showSignature", "signature"] if (req.template or {}).get(k) is not None}, ensure_ascii=False)}
+
 DEMANDE: {req.message}
+
+Ce que tu peux modifier:
+- le texte LinkedIn (caption), les textes et chiffres du visuel (visual.*), l'analyse (editorial.*);
+- le format affiché: visual.recommended_format = "A" | "B" | "C" | "K" (K = carrousel PDF);
+- le logo de la source: visual.hide_source_logo (true/false), visual.source_logo_scale (0.6 à 2, défaut 1.3);
+- le template (couleurs hex #RRGGBB: background, accent, titles, secondary, text, lines; bannerShape rect|rounded|pill|underline;
+  bulletShape square|circle|dash; ruleStyle bar|thin|none; titleFont Outfit|"Playfair Display"; bannerText; showDate; showSignature; signature)
+  → dans "template". Garde des contrastes lisibles (texte foncé sur fond clair ou l'inverse).
+Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique).
+Si on te le demande, obtiens l'effet voulu autrement (raccourcir/allonger un texte, ajouter des faits, changer de format)
+et dis-le en une phrase. Sois proactif: interprète la demande de la façon la plus utile, n'en reste pas à « impossible ».
 
 Règles:
 - Le visuel affiche: visual.title_short (titre), puis selon visual.recommended_format:
@@ -1189,7 +1242,7 @@ Règles:
 
 Renvoie STRICTEMENT ce JSON:
 {{"reply": "1 à 2 phrases en français : ce que tu as changé (ou pourquoi tu ne peux pas)",
-  "changes": {{"caption": "uniquement si modifié", "visual": {{"seulement les champs modifiés": "..."}}, "editorial": {{"seulement les champs modifiés": "..."}}}}}}"""
+  "changes": {{"caption": "uniquement si modifié", "visual": {{"seulement les champs modifiés": "..."}}, "editorial": {{"seulement les champs modifiés": "..."}}, "template": {{"seulement les champs modifiés": "..."}}}}}}"""
     data = await llm_json(EDITORIAL_SYSTEM, prompt)
     await progress("finalize")
     ch = data.get("changes") if isinstance(data.get("changes"), dict) else {}
@@ -1198,8 +1251,15 @@ Renvoie STRICTEMENT ce JSON:
     if isinstance(ch.get("caption"), str) and ch["caption"].strip():
         out["caption"] = apply_signature(clean_caption(ch["caption"], lang), style)
     vis = {k: v for k, v in (ch.get("visual") or {}).items() if k in ASSIST_VISUAL_KEYS} if isinstance(ch.get("visual"), dict) else {}
-    if vis.get("recommended_format") not in (None, "A", "B", "C"):
+    if vis.get("recommended_format") not in (None, "A", "B", "C", "K"):
         vis.pop("recommended_format")
+    if "hide_source_logo" in vis and not isinstance(vis["hide_source_logo"], bool):
+        vis.pop("hide_source_logo")
+    if "source_logo_scale" in vis:
+        try:
+            vis["source_logo_scale"] = max(0.6, min(2.0, float(vis["source_logo_scale"])))
+        except (TypeError, ValueError):
+            vis.pop("source_logo_scale")
     if "chart" in vis:
         tmp = {"visual": {"chart": vis["chart"]}}
         normalize_chart(tmp)
@@ -1214,6 +1274,9 @@ Renvoie STRICTEMENT ce JSON:
         if isinstance(ch.get("editorial"), dict) else {}
     if ed:
         out["editorial"] = ed
+    tpl = _clean_template_changes(ch.get("template"))
+    if tpl:
+        out["template"] = tpl
     return {"reply": str(data.get("reply") or "C'est fait.").strip()[:600], "changes": out}
 
 

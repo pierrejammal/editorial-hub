@@ -4,7 +4,8 @@ import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import { VisualTextEditor } from "@/components/VisualTextEditor";
 import { TemplateEditor } from "@/components/TemplateEditor";
-import { renderCarousel } from "@/lib/carouselRender";
+import { renderCarousel, carouselPageLabel } from "@/lib/carouselRender";
+import { setAssistView, onAiChange, pageKindForFields } from "@/lib/assistBus";
 import { jpegsToPdf } from "@/lib/pdf";
 import { prepareLogo } from "@/lib/logoImage";
 import { resolveSourceLogo } from "@/lib/sourceLogo";
@@ -67,6 +68,19 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const [carPage, setCarPage] = useState(0);
   const [carCount, setCarCount] = useState(0);
   const isCarousel = version === "K";
+  // "Mis à jour par l'IA": flash + badge on the preview, and the carousel page to jump to
+  const [aiFlash, setAiFlash] = useState(null);
+  const jumpKindRef = useRef(null);
+  useEffect(() => onAiChange(({ fields = [], format, labels = [] }) => {
+    if (format) setVersion(format);
+    jumpKindRef.current = pageKindForFields(fields);
+    setAiFlash({ at: Date.now(), text: labels.length ? labels.slice(0, 3).join(", ") : "visuel" });
+  }), []);
+  useEffect(() => {
+    if (!aiFlash) return undefined;
+    const t = setTimeout(() => setAiFlash(null), 2800);
+    return () => clearTimeout(t);
+  }, [aiFlash]);
   const [title, setTitle] = useState(v.title_short || post.editorial?.fact || post.meta?.topic || "");
   // the imported logo is stored with the post (visual.source_logo), so it survives reloads and saves
   const uploadedLogoSrc = v.source_logo || null;
@@ -141,14 +155,23 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         const pages = renderCarousel(localPost, images, (w, h) => { const x = document.createElement("canvas"); x.width = w; x.height = h; return x; }, template);
         const n = pages.length;
         setCarCount(n);
-        const pg = Math.min(carPage, n - 1);
+        let pg = Math.min(carPage, n - 1);
+        // the AI just changed something: show the page where it appears
+        if (jumpKindRef.current) {
+          const idx = pages.findIndex((p) => p.pageKind === jumpKindRef.current);
+          jumpKindRef.current = null;
+          if (idx >= 0) pg = idx;
+        }
         if (pg !== carPage) setCarPage(pg);
+        setAssistView({ format: "K", page: pg, pageCount: n, pageKind: pages[pg].pageKind, pageLabel: carouselPageLabel(pages[pg].pageKind) });
         const ctx = c.getContext("2d");
         ctx.clearRect(0, 0, VW, VH);
         ctx.drawImage(pages[pg], 0, 0);
         thumbSrc = pages[0]; // "Mes posts" shows the cover
       } else {
         renderVisual(c.getContext("2d"), { post: localPost, version, images, template });
+        setAssistView({ format: version, page: 0, pageCount: 0, pageKind: null, pageLabel: "" });
+        jumpKindRef.current = null;
       }
     } catch (e) {
       console.error("visual render failed", e); // a drawing bug must never crash the whole page
@@ -337,6 +360,17 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     </>
   );
 
+  // re-keyed on each AI change so the animation replays
+  const aiBadge = aiFlash && (
+    <React.Fragment key={aiFlash.at}>
+      <span aria-hidden="true" className="ai-flash-ring pointer-events-none absolute inset-0 rounded-lg" />
+      <span role="status" data-testid="ai-updated-badge"
+        className="ai-flash-badge pointer-events-none absolute left-1/2 top-3 max-w-[90%] -translate-x-1/2 truncate rounded-full bg-forsides-ink px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg">
+        ✓ Mis à jour par l'IA · {aiFlash.text}
+      </span>
+    </React.Fragment>
+  );
+
   const openZoom = () => {
     try { setZoom(canvasRef.current.toDataURL("image/png")); } catch { /* protected logo: no zoom */ }
   };
@@ -398,6 +432,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
               style={fit ? { width: fit.w, height: fit.h } : undefined}
               className={`block cursor-zoom-in rounded-lg border border-slate-200 bg-white shadow-md ${fit ? "" : "h-auto w-full"}`} />
             {isCarousel && carNav}
+            {aiBadge}
           </div>
         </div>
 
@@ -456,6 +491,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       <div className="relative overflow-hidden rounded-lg border border-slate-200 shadow-inner">
         <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" />
         {isCarousel && carNav}
+        {aiBadge}
       </div>
 
       <div className="mt-4 space-y-3">
