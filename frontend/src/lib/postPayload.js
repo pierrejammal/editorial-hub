@@ -15,5 +15,6 @@ export const buildSavePayload = (post, { thumb = "", origin = "studio", schedule
   source_text: post.source_text || "",
   translated_from: post.translated_from || null,
   english_id: post.english_id || null,
+  synthesis: post.synthesis || null,
   chat: (post.chat || []).slice(-30).map(({ role, content }) => ({ role, content })),
 });

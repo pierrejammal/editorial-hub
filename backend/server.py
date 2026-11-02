@@ -430,6 +430,7 @@ def scrape_url(url: str) -> Dict[str, Any]:
 # ---------- Models ----------
 class AnalyzeUrlReq(BaseModel):
     url: str
+    urls: List[str] = Field(default_factory=list)  # extra links analysed together with `url` (multi-source post)
     length: str = "standard"
     tone: Optional[str] = None  # None → the house default tone
 
@@ -640,11 +641,96 @@ async def _noop_progress(step: str):
     return None
 
 
-async def do_analyze_url(req: AnalyzeUrlReq, progress=_noop_progress) -> Dict[str, Any]:
+MAX_LINKS = 4
+
+
+def _pub_dt(published: str):
+    try:
+        return datetime.fromisoformat(published.replace("Z", "+00:00")) if published else None
+    except Exception:
+        return None
+
+
+async def do_analyze_urls(urls: List[str], req: AnalyzeUrlReq, progress=_noop_progress) -> Dict[str, Any]:
+    """Several links → one post that explains how the sources connect."""
+    await progress("fetch")
+    results = await asyncio.gather(*[asyncio.to_thread(scrape_url, u) for u in urls], return_exceptions=True)
+    ok = [(u, r) for u, r in zip(urls, results) if isinstance(r, dict)]
+    failed = [u for u, r in zip(urls, results) if not isinstance(r, dict)]
+    if not ok:
+        first = next((r for r in results if isinstance(r, HTTPException)), None)
+        raise first or HTTPException(status_code=422, detail="Aucun des liens n'a pu être lu.")
+    if len(ok) == 1:  # only one readable link: a normal single-source post
+        data = await do_analyze_url(AnalyzeUrlReq(url=ok[0][0], length=req.length, tone=req.tone), progress, ok[0][1])
+        if failed:
+            data.setdefault("meta", {})["unreadable_links"] = failed
+        return data
+    style = await load_style()
+    per_src = 9000 // len(ok)
+    blocks = "\n\n".join(
+        f"=== SOURCE {i + 1} ===\nURL: {u}\nNOM DE LA SOURCE: {r['site_name']}\nDATE: {r['published'] or 'inconnue'}\n"
+        f"TITRE: {r['title']}\nCONTENU:\n{r['text'][:per_src]}"
+        for i, (u, r) in enumerate(ok))
+    names = [r["site_name"] for _, r in ok]
+    prompt = f"""Tu disposes de {len(ok)} SOURCES à analyser ENSEMBLE pour un seul post LinkedIn.
+
+{blocks}
+
+CONSIGNE MULTI-SOURCES:
+- Identifie le LIEN entre ces sources: se complètent, se confirment, se contredisent, cause → conséquence,
+  ou un même sujet vu sous plusieurs angles (réglementaire / chiffres / marché). C'est l'angle du post.
+- Le caption croise les sources et nomme chacune quand tu en cites un fait ou un chiffre (« selon la DREES… »).
+- Chaque chiffre reste attribué à SA source; n'additionne ni ne compare des chiffres de périmètres différents
+  sans le dire.
+- Ajoute dans le JSON un objet "synthesis": {{"relation": "complémentaires | se confirment | se contredisent |
+  cause et conséquence | angles différents", "explanation": "2 à 3 phrases sur ce que le croisement apprend",
+  "per_source": [{{"source": "nom", "apport": "1 phrase: ce que cette source apporte"}}]}}.
+- editorial.angle explique l'angle du croisement.
+
+{ANALYSIS_INSTRUCTIONS(req.length)}
+{style_block(style, req.tone)}"""
+    await progress("ai")
+    data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    await progress("finalize")
+    normalize_scoring(data)
+    normalize_chart(data)
+    data["caption"] = apply_signature(clean_caption(data.get("caption") or ""), style)
+    dts = [d for d in (_pub_dt(r["published"]) for _, r in ok) if d]
+    latest = max(dts) if dts else None
+    uniq_names = list(dict.fromkeys(n for n in names if n))
+    data["meta"] = data.get("meta") or {}
+    data["meta"].update({
+        "source": " / ".join(uniq_names[:3]),
+        "source_url": ok[0][0],
+        "source_urls": [u for u, _ in ok],
+        "source_title": ok[0][1]["title"] or "",
+        "publication_date": latest.isoformat() if latest else "",
+        "date_label": french_date_label(latest),
+        "image_url": ok[0][1].get("image") or "",
+        "source_logo_url": ok[0][1].get("logo") or "",
+        "multi_source": True,
+    })
+    if failed:
+        data["meta"]["unreadable_links"] = failed
+    syn = data.get("synthesis")
+    data["synthesis"] = syn if isinstance(syn, dict) else None
+    data["source_text"] = "\n\n".join(f"[{r['site_name']}] {r['title']}\n{r['text']}" for _, r in ok)
+    data["sources"] = [{"title": r["title"] or r["site_name"], "url": u} for u, r in ok]
+    data["id"] = str(uuid.uuid4())
+    await store_generated(data, "analyze")
+    data.pop("_id", None)
+    return data
+
+
+async def do_analyze_url(req: AnalyzeUrlReq, progress=_noop_progress, scraped: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    urls = list(dict.fromkeys(u.strip() for u in [req.url, *req.urls] if u and u.strip()))[:MAX_LINKS]
+    if scraped is None and len(urls) > 1:
+        return await do_analyze_urls(urls, req, progress)
     await progress("fetch")
     # scrape_url is blocking network code (up to ~30 s): run it in a thread so the server
     # keeps answering other requests (including the job polling) meanwhile.
-    scraped = await asyncio.to_thread(scrape_url, req.url.strip())
+    if scraped is None:
+        scraped = await asyncio.to_thread(scrape_url, req.url.strip())
     style = await load_style()
     pub_dt = None
     if scraped["published"]:
@@ -1498,6 +1584,7 @@ class SavePostReq(BaseModel):
     translated_from: Optional[str] = None  # EN post → its French original
     english_id: Optional[str] = None       # FR post → its English version
     chat: Optional[List[Dict[str, Any]]] = None  # Studio assistant conversation
+    synthesis: Optional[Dict[str, Any]] = None   # multi-link analysis: how the sources connect
 
 
 @api_router.post("/posts/save")

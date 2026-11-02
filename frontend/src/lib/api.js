@@ -39,8 +39,11 @@ async function runJob(path, payload, { interval = 2000, maxMs = 240000, onProgre
 }
 
 // tone: "standard" | "expert" | "pedagogique" | "alerte" | null (house default)
-export const analyzeUrl = (url, length = "standard", { tone, onProgress } = {}) =>
-  runJob("/jobs/analyze-url", { url, length, tone: tone || null }, { onProgress });
+// url: one link, or an array of links analysed together (one post explaining how they connect)
+export const analyzeUrl = (url, length = "standard", { tone, onProgress } = {}) => {
+  const list = Array.isArray(url) ? url : [url];
+  return runJob("/jobs/analyze-url", { url: list[0], urls: list.slice(1), length, tone: tone || null }, { onProgress, maxMs: 300000 });
+};
 
 export const searchTopics = (payload, { onProgress } = {}) => runJob("/jobs/search", payload, { onProgress });
 

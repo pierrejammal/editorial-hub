@@ -11,12 +11,13 @@ import { FactCheckPanel } from "@/components/FactCheckPanel";
 import { EnglishVersionButton } from "@/components/EnglishVersionButton";
 import { Collapsible } from "@/components/Collapsible";
 import { AssistantPanel } from "@/components/AssistantPanel";
+import { SynthesisPanel } from "@/components/SynthesisPanel";
 import { runFactCheck } from "@/lib/factcheck";
 import { scoreBand } from "@/lib/score";
 import { useStudio } from "@/context/StudioContext";
 import { savePost } from "@/lib/api";
 import { buildSavePayload } from "@/lib/postPayload";
-import { ArrowLeft, Check, Loader2, CloudOff, ShieldCheck, ShieldAlert, MessageSquareText } from "lucide-react";
+import { ArrowLeft, Check, Loader2, CloudOff, ShieldCheck, ShieldAlert, MessageSquareText, Link2 } from "lucide-react";
 
 const Studio = () => {
   const { post, setPost } = useStudio();
@@ -119,6 +120,13 @@ const Studio = () => {
               summary={<span className="hidden text-xs text-slate-400 sm:inline">corrige le texte et le visuel</span>}>
               <AssistantPanel post={post} setPost={setPost} />
             </Collapsible>
+            {post.synthesis && (
+              <Collapsible id="synthesis" title="Lien entre les sources" defaultOpen
+                icon={<Link2 className="h-5 w-5 text-forsides-red" />}
+                summary={<span className="hidden font-mono text-xs text-slate-400 sm:inline">{(post.sources || []).length} sources</span>}>
+                <SynthesisPanel synthesis={post.synthesis} sources={post.sources} />
+              </Collapsible>
+            )}
             {post.scoring && (
               <Collapsible id="score" title="Score éditorial"
                 summary={band && <span className="rounded-full px-2.5 py-0.5 font-mono text-xs font-bold text-white" style={{ background: band.color }}>{total}/100 · {band.label}</span>}>

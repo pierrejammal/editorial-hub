@@ -95,9 +95,11 @@ const Home = () => {
     if (mode === "link") {
       const u = url.trim();
       if (!/^https?:\/\/\S+\.\S+/i.test(u)) { toast.error("Collez une adresse complète qui commence par https://"); return; }
+      // several links pasted (separated by spaces) are analysed together
+      const links = [...new Set(u.match(/https?:\/\/\S+/gi) || [])].slice(0, 4);
       setLoading("analyze");
       try {
-        const data = await analyzeUrl(u, "standard", { tone, onProgress: setPhase });
+        const data = await analyzeUrl(links.length > 1 ? links : u, "standard", { tone, onProgress: setPhase });
         setPost({ ...data, visual: withFormat(data.visual, fmt) });
         nav("/studio");
       } catch (err) {
@@ -167,7 +169,7 @@ const Home = () => {
                   <label htmlFor="home-url" className="text-xs uppercase tracking-[0.18em] text-slate-500">Collez le lien d'une actualité</label>
                   <div className="mt-2 flex flex-wrap gap-3">
                     <input id="home-url" data-testid="home-url" type="url" value={url} onChange={(e) => setUrl(e.target.value)}
-                      placeholder="https://www.acpr.banque-france.fr/…" autoComplete="off"
+                      placeholder="https://… (plusieurs liens séparés par un espace pour les croiser)" autoComplete="off"
                       className="min-w-0 flex-[1_1_16rem] border-0 border-b border-slate-400 bg-transparent py-3 text-base text-forsides-ink outline-none focus:border-forsides-red" />
                     <button type="submit" disabled={Boolean(loading)} data-testid="home-submit-link" className="cta-ed shrink-0 bg-forsides-red text-white hover:bg-forsides-bordeaux">
                       Transformer en post <span className="arr">→</span>
