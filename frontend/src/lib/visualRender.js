@@ -517,7 +517,7 @@ function ellipsize(ctx, text, maxW) {
   return t.trimEnd() + "…";
 }
 
-function drawBarChart(ctx, chart, x, y, w, h) {
+function drawBarChart(ctx, chart, x, y, w, h, { rowMax = 140 } = {}) {
   const items = chart.items;
   const vals = items.map((i) => Number(i.value));
   const lo = Math.min(0, ...vals);
@@ -558,7 +558,7 @@ function drawBarChart(ctx, chart, x, y, w, h) {
   }
 
   // horizontal bars: label on top of each bar, value at the end of the bar
-  const rowH = Math.min(140, h / items.length);
+  const rowH = Math.min(rowMax, h / items.length);
   const barH = Math.max(22, rowH * 0.36);
   const valueW = 200;
   const plotW = w - valueW;

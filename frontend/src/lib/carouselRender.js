@@ -205,15 +205,18 @@ function dataPage(ctx, d, images, n, total) {
     // chart sized to what it needs, its reading sentence in full, then the key facts;
     // the whole block is centred so the page is never half empty
     bigLabel(ctx, L.figures, top + 90);
-    const areaTop = top + 150;
+    const areaTop = top + 135;
     const areaBottom = VH - 170;
     const ctitle = clean(chart.title).toUpperCase();
     const note = clean(chart.note);
     const facts = (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3);
     const vertical = chart.type !== "pie" && chart.items.every((i) => /^(\d{4}|[TSQH]\d[\s-]?\d{2,4}|\d{4}[\s-]\d{2,4})$/i.test(String(i.label).trim()));
-    const natural = chart.type === "pie" || vertical ? 560 : Math.max(260, chart.items.length * 150);
+    // few bars → taller rows so the chart fills the page instead of leaving a hole
+    const rowMax = chart.items.length <= 3 ? 190 : 150;
+    const natural = chart.type === "pie" || vertical ? 600 : Math.max(260, chart.items.length * rowMax);
+    const avail = areaBottom - areaTop;
 
-    const measure = (notePx, chartH) => {
+    const measure = (notePx, chartH, factPx) => {
       let h = 0;
       ctx.font = "600 22px Outfit";
       const tl = ctitle ? Math.min(2, wrapWords(ctx, ctitle, MAXW).length) : 0;
@@ -222,18 +225,27 @@ function dataPage(ctx, d, images, n, total) {
       ctx.font = `italic 500 ${notePx}px Outfit`;
       const nl = note ? wrapWords(ctx, note, MAXW).length : 0;
       h += nl ? 50 + nl * Math.round(notePx * 1.35) : 0;
-      ctx.font = "600 32px Outfit";
-      const fh = facts.reduce((a, f) => a + Math.min(2, wrapWords(ctx, f, MAXW - 50).length) * 42 + 20, 0);
+      ctx.font = `600 ${factPx}px Outfit`;
+      const flh = Math.round(factPx * 1.32);
+      const fh = facts.reduce((a, f) => a + Math.min(2, wrapWords(ctx, f, MAXW - 50).length) * flh + 20, 0);
       h += facts.length ? 60 + fh : 0;
-      return { h, tl, nl };
+      return { h, tl, nl, flh };
     };
     let notePx = 34;
+    let factPx = 32;
     let chartH = natural;
-    let m = measure(notePx, chartH);
-    while (m.h > areaBottom - areaTop && notePx > 22) { notePx -= 2; m = measure(notePx, chartH); }
-    while (m.h > areaBottom - areaTop && chartH > 220) { chartH -= 20; m = measure(notePx, chartH); }
+    let m = measure(notePx, chartH, factPx);
+    while (m.h > avail && notePx > 22) { notePx -= 2; m = measure(notePx, chartH, factPx); }
+    while (m.h > avail && chartH > 220) { chartH -= 20; m = measure(notePx, chartH, factPx); }
+    // room left: enlarge the reading sentence and the facts a little
+    while (notePx < 40 && measure(notePx + 2, chartH, factPx).h <= avail) { notePx += 2; m = measure(notePx, chartH, factPx); }
+    while (factPx < 38 && measure(notePx, chartH, factPx + 2).h <= avail) { factPx += 2; m = measure(notePx, chartH, factPx); }
+    // whatever is still free is spread between the sections (not above the chart), the rest stays at the bottom
+    const free = Math.max(0, avail - m.h);
+    const gaps = (m.nl ? 1 : 0) + (facts.length ? 1 : 0);
+    const gapExtra = gaps ? Math.min(90, free / (gaps + 1)) : 0;
 
-    let y = areaTop + Math.max(0, (areaBottom - areaTop - m.h) / 2);
+    let y = areaTop;
     if (m.tl) {
       ctx.fillStyle = "#8a6a62";
       ctx.font = "600 22px Outfit";
@@ -244,9 +256,10 @@ function dataPage(ctx, d, images, n, total) {
       y += m.tl * 32 + 26;
     }
     if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, MAXW, chartH);
-    else drawBarChart(ctx, chart, PAD, y, MAXW, chartH);
+    else drawBarChart(ctx, chart, PAD, y, MAXW, chartH, { rowMax });
     y += chartH;
     if (m.nl) {
+      y += gapExtra;
       ctx.fillStyle = "#4a3a36";
       ctx.font = `italic 500 ${notePx}px Outfit`;
       const lh = Math.round(notePx * 1.35);
@@ -254,13 +267,13 @@ function dataPage(ctx, d, images, n, total) {
       y += 50 + m.nl * lh;
     }
     if (facts.length) {
-      y += 60;
+      y += 60 + gapExtra;
       facts.forEach((f, i) => {
         drawBullet(ctx, PAD, y + 6, 18, i % 2 === 0 ? BRICK : CORAL);
         ctx.fillStyle = BORDEAUX;
-        ctx.font = "600 32px Outfit";
-        const end = drawParagraph(ctx, f, PAD + 50, y + 28, MAXW - 50, 42, false, 2);
-        y = end - 42 + 20 + 14;
+        ctx.font = `600 ${factPx}px Outfit`;
+        const end = drawParagraph(ctx, f, PAD + 50, y + factPx - 4, MAXW - 50, m.flh, false, 2);
+        y = end - m.flh + 20 + 14;
       });
     }
   } else {
