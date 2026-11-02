@@ -298,6 +298,11 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
             onChange={(e) => updateVisual({ hide_source_logo: !e.target.checked })} />
           Afficher le logo de la source
         </label>
+        <label className="inline-flex items-center gap-2">
+          <input type="checkbox" data-testid="visual-show-date" checked={!v.hide_date}
+            onChange={(e) => updateVisual({ hide_date: !e.target.checked })} />
+          Afficher la date
+        </label>
         {!v.hide_source_logo && (
           <span className="text-slate-400">
             {{ upload: "Logo importé", library: "Logo officiel (bibliothèque)", site: "Logo trouvé sur le site de la source",

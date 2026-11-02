@@ -289,7 +289,7 @@ export function resolveContent(post, title) {
 
   const source = clean(m.source);
   const srcTitle = pick(m.source_title, post.sources?.[0]?.title, m.topic);
-  const auto = { summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: clean(m.date_label) };
+  const auto = { summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: v.hide_date ? "" : clean(m.date_label) };
 
   // Text the user edited by hand in "Modifier le texte du visuel" always wins over the automatic choice.
   const cu = v.custom || {};
@@ -795,7 +795,7 @@ export function drawHeader(ctx, post, images) {
   const bannerBottom = rectY + rectH;
 
   // date
-  if (TPL.showDate) {
+  if (TPL.showDate && !post.visual?.hide_date) {
     ctx.fillStyle = INK;
     ctx.font = "500 32px Outfit";
     ctx.textAlign = label ? "right" : "left";

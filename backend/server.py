@@ -1137,7 +1137,7 @@ class AssistReq(BaseModel):
 
 ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure_label", "important_date",
                       "data_points", "insight_line", "chart", "recommended_format", "custom",
-                      "hide_source_logo", "source_logo_scale"}
+                      "hide_source_logo", "source_logo_scale", "hide_date"}
 ASSIST_TEMPLATE_COLORS = {"background", "accent", "titles", "secondary", "text", "lines"}
 ASSIST_TEMPLATE_CHOICES = {"bannerShape": {"rect", "rounded", "pill", "underline"},
                            "bulletShape": {"square", "circle", "dash"},
@@ -1261,6 +1261,7 @@ Ce que tu peux modifier:
 - le texte LinkedIn (caption), les textes et chiffres du visuel (visual.*), l'analyse (editorial.*);
 - le format affiché: visual.recommended_format = "A" | "B" | "C" | "K" (K = carrousel PDF);
 - le logo de la source: visual.hide_source_logo (true/false), visual.source_logo_scale (0.6 à 2, défaut 1.3);
+- la date du post (en-tête et ligne source): visual.hide_date (true = masquée);
 - le template (couleurs hex #RRGGBB: background, accent, titles, secondary, text, lines; bannerShape rect|rounded|pill|underline;
   bulletShape square|circle|dash; ruleStyle bar|thin|none; titleFont Outfit|"Playfair Display"; bannerText; showDate; showSignature; signature)
   → dans "template". Garde des contrastes lisibles (texte foncé sur fond clair ou l'inverse).
@@ -1297,8 +1298,9 @@ Renvoie STRICTEMENT ce JSON:
     vis = {k: v for k, v in (ch.get("visual") or {}).items() if k in ASSIST_VISUAL_KEYS} if isinstance(ch.get("visual"), dict) else {}
     if vis.get("recommended_format") not in (None, "A", "B", "C", "K"):
         vis.pop("recommended_format")
-    if "hide_source_logo" in vis and not isinstance(vis["hide_source_logo"], bool):
-        vis.pop("hide_source_logo")
+    for flag in ("hide_source_logo", "hide_date"):
+        if flag in vis and not isinstance(vis[flag], bool):
+            vis.pop(flag)
     if "source_logo_scale" in vis:
         try:
             vis["source_logo_scale"] = max(0.6, min(2.0, float(vis["source_logo_scale"])))

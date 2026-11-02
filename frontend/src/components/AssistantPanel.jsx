@@ -26,7 +26,7 @@ const LABELS = {
   caption: "texte LinkedIn", title_short: "titre", recommended_format: "format", chart: "graphique",
   data_points: "faits clés", key_figure_value: "chiffre clé", key_figure_label: "libellé du chiffre",
   important_date: "échéance", custom: "texte du visuel", insight_line: "phrase finale", subtitle: "sous-titre",
-  hide_source_logo: "logo de la source", source_logo_scale: "taille du logo",
+  hide_source_logo: "logo de la source", hide_date: "date", source_logo_scale: "taille du logo",
   fact: "L'essentiel", what_changes: "Ce qui change", why_important: "Pourquoi c'est important", insight: "À retenir",
   key_figure: "chiffre clé", angle: "angle",
   background: "couleur de fond", accent: "couleur d'accent", titles: "couleur des titres", secondary: "couleur secondaire",
