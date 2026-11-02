@@ -21,6 +21,8 @@ export const DEFAULT_TEMPLATE = {
   showDate: true,
   showSignature: true,
   signature: "For you, by your side",
+  bannerScale: 1,        // taille du bandeau NEWS (0.7 – 1.6)
+  logoScale: 1,          // taille du logo FORSIDES (0.7 – 1.8)
 };
 // Live bindings: carouselRender imports these and sees the updated values.
 let BLUSH = DEFAULT_TEMPLATE.background;
@@ -42,6 +44,12 @@ export function applyTemplate(t) {
   BLUSH = m.background; BRICK = m.accent; BORDEAUX = m.titles; CORAL = m.secondary; INK = m.text; DOT = m.lines;
 }
 export const currentTemplate = () => TPL;
+// size multipliers of the banner and the FORSIDES logo, kept in a safe range
+export const tplScale = (k) => {
+  const [lo, hi] = k === "logoScale" ? [0.7, 1.8] : [0.7, 1.6];
+  const n = Number(TPL[k]);
+  return Number.isFinite(n) && n > 0 ? Math.max(lo, Math.min(hi, n)) : 1;
+};
 export const titleFontFamily = () => (TPL.titleFont === "Playfair Display" ? "'Playfair Display'" : "Outfit");
 
 // bullets in front of points / figure lists, in the template's shape
@@ -760,19 +768,20 @@ export function drawHeader(ctx, post, images) {
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
   const label = String(TPL.bannerText || "").trim().slice(0, 24);
-  const padX = 22;
+  const bs = tplScale("bannerScale");
+  const padX = 22 * bs;
   const rectY = 52;
-  const rectH = 128;
+  const rectH = Math.round(128 * bs);
   let bannerRight = PAD;
   if (label) {
     // long words get a smaller font so the banner never runs into the logos
-    const px = fitFontSize(ctx, label, "Anton", 118, 560, 60);
+    const px = fitFontSize(ctx, label, "Anton", Math.round(118 * bs), Math.min(640, 560 * bs), 60);
     const tw = ctx.measureText(label).width;
     const w = tw + padX * 2;
     const shape = TPL.bannerShape;
     if (shape === "underline") {
       ctx.fillStyle = BRICK;
-      ctx.fillText(label, PAD, rectY + rectH - 26);
+      ctx.fillText(label, PAD, rectY + rectH - 26 * bs);
       ctx.fillRect(PAD, rectY + rectH - 6, tw, 10);
       bannerRight = PAD + tw;
     } else {
@@ -787,7 +796,7 @@ export function drawHeader(ctx, post, images) {
       ctx.shadowOffsetY = 4;
       ctx.fillStyle = "#fff";
       ctx.font = `${px}px Anton`;
-      ctx.fillText(label, PAD + padX + (shape === "pill" ? 10 : 0), rectY + rectH - 26 - (118 - px) * 0.4);
+      ctx.fillText(label, PAD + padX + (shape === "pill" ? 10 : 0), rectY + rectH - 26 * bs - (118 * bs - px) * 0.4);
       ctx.restore();
       bannerRight = PAD + w + (shape === "pill" ? 20 : 0);
     }
@@ -806,8 +815,9 @@ export function drawHeader(ctx, post, images) {
   // FORSIDES logo
   let logoBottom = 60;
   if (logoImg) {
-    const lh = 84;
-    const lw = (logoImg.width / logoImg.height) * lh;
+    let lh = 84 * tplScale("logoScale");
+    let lw = (logoImg.width / logoImg.height) * lh;
+    if (lw > 560) { lw = 560; lh = lw * (logoImg.height / logoImg.width); } // never runs into the banner
     ctx.drawImage(logoImg, VW - PAD - lw, 50, lw, lh);
     logoBottom = 50 + lh;
   }

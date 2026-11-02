@@ -149,6 +149,22 @@ export const TemplateEditor = () => {
             </div>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            {[
+              { k: "bannerScale", label: "Taille du bandeau", min: 0.7, max: 1.6, testid: "template-banner-scale" },
+              { k: "logoScale", label: "Taille du logo FORSIDES", min: 0.7, max: 1.8, testid: "template-logo-scale" },
+            ].map(({ k, label, min, max, testid }) => (
+              <div key={k}>
+                <Label>{label}</Label>
+                <div className="flex items-center gap-2">
+                  <input type="range" data-testid={testid} min={min} max={max} step={0.05} aria-label={label}
+                    value={Number(template[k]) || 1} onChange={(e) => set({ [k]: Number(e.target.value) })}
+                    className="flex-1 accent-[#C0453A]" />
+                  <span className="w-11 text-right font-mono text-xs text-forsides-slate">{Math.round((Number(template[k]) || 1) * 100)} %</span>
+                </div>
+              </div>
+            ))}
+          </div>
           <div>
             <Label>Forme du bandeau</Label>
             <Choice testid="template-banner-shape" value={template.bannerShape} onChange={(v) => set({ bannerShape: v })}

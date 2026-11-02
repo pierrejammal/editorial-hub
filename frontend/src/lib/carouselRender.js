@@ -3,7 +3,7 @@ import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
   clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
-  applyTemplate, currentTemplate, titleFontFamily, drawBullet,
+  applyTemplate, currentTemplate, tplScale, titleFontFamily, drawBullet,
 } from "@/lib/visualRender";
 
 const CL = {
@@ -44,22 +44,27 @@ function miniHeader(ctx, images, n, total) {
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   const label = String(currentTemplate().bannerText || "").trim().slice(0, 24);
-  ctx.font = "56px Anton";
+  const bs = tplScale("bannerScale");
+  const bh = Math.round(70 * bs);
+  ctx.font = `${Math.round(56 * bs)}px Anton`;
   const tw = ctx.measureText(label).width;
   if (label) {
     ctx.fillStyle = BRICK;
-    ctx.fillRect(PAD, 60, tw + 28, 70);
+    ctx.fillRect(PAD, 60, tw + 28 * bs, bh);
     ctx.fillStyle = "#fff";
-    ctx.fillText(label, PAD + 14, 117);
+    ctx.fillText(label, PAD + 14 * bs, 60 + bh - 13 * bs);
   }
   const logo = images?.logoImg;
+  let lh = 0;
   if (logo) {
-    const lh = 60;
-    const lw = (logo.width / logo.height) * lh;
+    lh = 60 * tplScale("logoScale");
+    let lw = (logo.width / logo.height) * lh;
+    if (lw > 520) { lw = 520; lh = lw * (logo.height / logo.width); }
     ctx.drawImage(logo, VW - PAD - lw, 64, lw, lh);
   }
   pageCounter(ctx, n, total);
-  return 200;
+  // the page content starts under whichever is taller
+  return Math.max(200, 60 + bh + 70, 64 + lh + 66);
 }
 
 function pageCounter(ctx, n, total) {

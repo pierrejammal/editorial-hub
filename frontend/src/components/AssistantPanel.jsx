@@ -32,7 +32,7 @@ const LABELS = {
   background: "couleur de fond", accent: "couleur d'accent", titles: "couleur des titres", secondary: "couleur secondaire",
   text: "couleur du texte", lines: "couleur des filets", bannerShape: "bandeau", bannerText: "texte du bandeau",
   bulletShape: "puces", ruleStyle: "filets", titleFont: "police des titres", showDate: "date", showSignature: "signature",
-  signature: "signature",
+  signature: "signature", bannerScale: "taille du bandeau", logoScale: "taille du logo FORSIDES",
 };
 
 const STEP_TEXT = { start: "Lecture de votre demande…", ai: "L'IA prépare la modification…", finalize: "Application au visuel…" };

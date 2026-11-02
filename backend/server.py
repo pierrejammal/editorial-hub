@@ -1247,6 +1247,9 @@ def _clean_template_changes(t: Any) -> Dict[str, Any]:
             out[k] = v.strip()
         elif k == "signature" and isinstance(v, str) and len(v.strip()) <= 60:
             out[k] = v.strip()
+        elif k in ("bannerScale", "logoScale") and isinstance(v, (int, float)) and not isinstance(v, bool):
+            lo, hi = (0.7, 1.6) if k == "bannerScale" else (0.7, 1.8)
+            out[k] = max(lo, min(hi, float(v)))
     return out
 
 
@@ -1339,14 +1342,18 @@ CONVERSATION PRÉCÉDENTE:
 L'UTILISATEUR REGARDE EN CE MOMENT: {_view_line(req.view or {})}
 (« ici », « cette page », « ce visuel » désignent ce qu'il regarde.)
 
-TEMPLATE ACTUEL (couleurs/formes du visuel): {json.dumps({k: (req.template or {}).get(k) for k in list(ASSIST_TEMPLATE_COLORS) + list(ASSIST_TEMPLATE_CHOICES) + ["bannerText", "showDate", "showSignature", "signature"] if (req.template or {}).get(k) is not None}, ensure_ascii=False)}
+TEMPLATE ACTUEL (couleurs/formes du visuel): {json.dumps({k: (req.template or {}).get(k) for k in list(ASSIST_TEMPLATE_COLORS) + list(ASSIST_TEMPLATE_CHOICES) + ["bannerText", "showDate", "showSignature", "signature", "bannerScale", "logoScale"] if (req.template or {}).get(k) is not None}, ensure_ascii=False)}
 
 DEMANDE: {req.message}
 
 Ce que tu peux modifier:
 - le texte LinkedIn (caption), les textes et chiffres du visuel (visual.*), l'analyse (editorial.*);
 - le format affiché: visual.recommended_format = "A" | "B" | "C" | "K" (K = carrousel PDF);
-- le logo de la source: visual.hide_source_logo (true/false), visual.source_logo_scale (0.6 à 2, défaut 1.3);
+- le logo de la SOURCE (DREES, ACPR…, sous le logo FORSIDES): visual.hide_source_logo (true/false),
+  visual.source_logo_scale (0.6 à 2, défaut 1.3);
+- la taille du bandeau NEWS: template.bannerScale (0.7 à 1.6, défaut 1) et la taille du logo FORSIDES:
+  template.logoScale (0.7 à 1.8, défaut 1). Valables pour le visuel ET le carrousel. Ne confonds pas avec source_logo_scale.
+  « Plus grand » sans précision = environ +25 %;
 - la date du post (en-tête et ligne source): visual.hide_date (true = masquée);
 - le template (couleurs hex #RRGGBB: background, accent, titles, secondary, text, lines; bannerShape rect|rounded|pill|underline;
   bulletShape square|circle|dash; ruleStyle bar|thin|none; titleFont Outfit|"Playfair Display"; bannerText; showDate; showSignature; signature)
@@ -1642,7 +1649,9 @@ async def delete_post(post_id: str):
 
 
 TEMPLATE_KEYS = {"background", "accent", "titles", "secondary", "text", "lines", "bannerText", "bannerShape",
-                 "bulletShape", "ruleStyle", "titleFont", "showDate", "showSignature", "signature"}
+                 "bulletShape", "ruleStyle", "titleFont", "showDate", "showSignature", "signature",
+                 "bannerScale", "logoScale"}
+TEMPLATE_SCALES = {"bannerScale": (0.7, 1.6), "logoScale": (0.7, 1.8)}
 
 
 LOGO_MAX_BYTES = 2_000_000
@@ -1685,10 +1694,18 @@ async def get_template():
 
 @api_router.put("/settings/template")
 async def put_template(req: Dict[str, Any]):
-    doc = {k: v for k, v in (req or {}).items() if k in TEMPLATE_KEYS and isinstance(v, (str, bool))}
+    doc = {k: v for k, v in (req or {}).items() if k in TEMPLATE_KEYS and isinstance(v, (str, bool, int, float))}
     for k, v in list(doc.items()):
-        if isinstance(v, str):
+        if k in TEMPLATE_SCALES:
+            lo, hi = TEMPLATE_SCALES[k]
+            try:
+                doc[k] = max(lo, min(hi, float(v)))
+            except (TypeError, ValueError):
+                doc.pop(k)
+        elif isinstance(v, str):
             doc[k] = v.strip()[:60]
+        elif not isinstance(v, bool):
+            doc.pop(k)
     await db.settings.replace_one({"_id": "template"}, {"_id": "template", **doc}, upsert=True)
     return doc
 
