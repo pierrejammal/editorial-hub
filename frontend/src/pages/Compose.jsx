@@ -49,29 +49,33 @@ const Compose = () => {
   const onVisualChange = (patch) =>
     setPost((p) => ({ ...p, visual: { ...p.visual, ...patch } }));
 
-  const optimize = async () => {
-    if (text.trim().length < 30) {
-      toast.error("Collez d'abord votre texte LinkedIn");
-      return;
-    }
+  // The AI lays out the visual automatically, once, as soon as a real text is pasted
+  // (no button). Later changes go through the Assistant IA below.
+  const optimize = async (t) => {
     setBusy(true);
     try {
-      const data = await composeFromText(text);
+      const data = await composeFromText(t);
       setPost((p) => ({
         ...p,
         meta: { ...p.meta, ...data.meta, date_label: p.meta.date_label },
         editorial: { ...p.editorial, ...data.editorial },
         visual: { ...p.visual, ...data.visual },
         _lastAuto: data.visual?.title_short || p._lastAuto,
-        caption: text,
+        _aiDone: true,
+        source_text: t,
       }));
-      toast.success("Visuel optimisé par l'IA");
     } catch (e) {
-      toast.error(e.detail || "Échec de l'optimisation");
+      setPost((p) => ({ ...p, _aiDone: true })); // don't retry in a loop; the assistant is still there
+      toast.error(e.detail || "Mise en forme automatique impossible : demandez-la à l'Assistant IA");
     } finally {
       setBusy(false);
     }
   };
+  useEffect(() => {
+    if (busy || post._aiDone || post.editorial?.fact || text.trim().length < 120) return undefined;
+    const t = setTimeout(() => optimize(text.trim()), 1200); // wait until the paste/typing settles
+    return () => clearTimeout(t);
+  }, [text, busy, post._aiDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="min-h-screen paper-grain">
@@ -131,15 +135,15 @@ const Compose = () => {
               placeholder="Collez ici le texte de votre publication LinkedIn…"
               className="w-full flex-1 resize-none rounded-lg border border-slate-200 bg-forsides-cream/40 p-4 font-sans text-sm leading-relaxed text-forsides-ink outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20"
             />
-            <button
-              data-testid="compose-optimize"
-              onClick={optimize}
-              disabled={busy}
-              className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-forsides-red px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-forsides-bordeaux disabled:opacity-60"
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Optimiser le visuel avec l'IA
-            </button>
+            <p data-testid="compose-auto-status" className="mt-3 inline-flex min-h-5 items-center gap-2 text-xs text-forsides-slate">
+              {busy ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Mise en forme du visuel par l'IA…</>
+              ) : post._aiDone || post.editorial?.fact ? (
+                <><Sparkles className="h-3.5 w-3.5 text-forsides-red" /> Visuel mis en forme. Pour le modifier, écrivez à l'Assistant IA.</>
+              ) : (
+                "Collez votre texte : le visuel se met en forme automatiquement."
+              )}
+            </p>
             <div className="mt-6 border-t border-dashed border-slate-300 pt-5">
               <p className="mb-3 font-serif text-lg font-bold text-forsides-ink">Assistant IA</p>
               <AssistantPanel post={{ ...post, caption: text, source_text: post.source_text || text }} setPost={setPost} onCaption={setText} />
