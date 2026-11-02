@@ -77,3 +77,13 @@ export const translatePost = (content) => http.post("/translate", { content }, {
 
 export const getTemplate = () => http.get("/settings/template").then((r) => r.data);
 export const saveTemplate = (t) => http.put("/settings/template", t).then((r) => r.data);
+
+// Studio assistant: returns { reply, changes: { caption?, visual?, editorial? } }
+export const askAssistant = (post, message, history, { onProgress } = {}) =>
+  runJob("/jobs/assist", {
+    post: {
+      caption: post.caption || "", visual: post.visual || {}, editorial: post.editorial || {},
+      meta: post.meta || {}, source_text: post.source_text || "",
+    },
+    message, history,
+  }, { interval: 1500, onProgress });

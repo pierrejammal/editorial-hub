@@ -1050,6 +1050,98 @@ async def job_analyze_topic(req: AnalyzeTopicReq):
     return await start_job(lambda progress: do_analyze_topic(req, progress))
 
 
+# ---------- Studio assistant (chat that edits the post) ----------
+class AssistReq(BaseModel):
+    post: Dict[str, Any]
+    message: str
+    history: List[Dict[str, str]] = Field(default_factory=list)
+
+
+ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure_label", "important_date",
+                      "data_points", "insight_line", "chart", "recommended_format", "custom"}
+ASSIST_EDITORIAL_KEYS = {"fact", "what_changes", "why_important", "insight", "key_figure", "angle"}
+
+
+def _assist_state(post: Dict[str, Any]) -> Dict[str, Any]:
+    v = post.get("visual") or {}
+    ed = post.get("editorial") or {}
+    return {
+        "caption": post.get("caption") or "",
+        "visual": {k: v.get(k) for k in ASSIST_VISUAL_KEYS if v.get(k) not in (None, "", [])},
+        "editorial": {k: ed.get(k) for k in ASSIST_EDITORIAL_KEYS if ed.get(k)},
+        "source": (post.get("meta") or {}).get("source", ""),
+        "langue": "anglais" if (post.get("meta") or {}).get("lang") == "en" else "français",
+    }
+
+
+async def do_assist(req: AssistReq, progress=_noop_progress) -> Dict[str, Any]:
+    await progress("ai")
+    post = req.post or {}
+    style = await load_style()
+    source = (post.get("source_text") or "")[:6000]
+    history = "\n".join(f"{'UTILISATEUR' if h.get('role') == 'user' else 'ASSISTANT'}: {str(h.get('content', ''))[:600]}"
+                        for h in req.history[-8:])
+    prompt = f"""Tu es l'assistant du Studio FORSIDES. L'utilisateur te demande de modifier son post LinkedIn
+et/ou son visuel. Applique EXACTEMENT sa demande, sans toucher au reste.
+
+ÉTAT ACTUEL DU POST (JSON):
+{json.dumps(_assist_state(post), ensure_ascii=False)}
+
+TEXTE DE LA SOURCE (référence pour les faits; ne cite aucun chiffre ou date absent de ce texte ou du post):
+{source or "(non disponible : n'ajoute aucun nouveau chiffre)"}
+
+CONVERSATION PRÉCÉDENTE:
+{history or "(aucune)"}
+
+DEMANDE: {req.message}
+
+Règles:
+- Le visuel affiche: visual.title_short (titre), puis selon visual.recommended_format:
+  "A" = Analyse (L'essentiel = editorial.fact + 3 points editorial.what_changes / why_important / insight),
+  "B" = Data (key_figure_value + key_figure_label, important_date, data_points, et les 3 points),
+  "C" = Graphique (visual.chart: {CHART_SCHEMA} + L'essentiel).
+- Si visual.custom existe, c'est LUI qui est affiché à la place de L'essentiel et des points: modifie visual.custom
+  ({{"summary": "...", "points": [{{"label": "...", "text": "..."}}]}}) plutôt que editorial.
+- Textes du visuel courts: titre 8 à 16 mots, points 1 phrase, data_points 3 à 8 mots.
+- Le caption (texte LinkedIn) reste en texte brut, sans markdown. Langue du post: {_assist_state(post)["langue"]}.
+- Si la demande est impossible sans inventer (chiffre absent de la source…), ne change rien et explique-le dans reply.
+{style_block(style, None)}
+
+Renvoie STRICTEMENT ce JSON:
+{{"reply": "1 à 2 phrases en français : ce que tu as changé (ou pourquoi tu ne peux pas)",
+  "changes": {{"caption": "uniquement si modifié", "visual": {{"seulement les champs modifiés": "..."}}, "editorial": {{"seulement les champs modifiés": "..."}}}}}}"""
+    data = await llm_json(EDITORIAL_SYSTEM, prompt)
+    await progress("finalize")
+    ch = data.get("changes") if isinstance(data.get("changes"), dict) else {}
+    out: Dict[str, Any] = {}
+    lang = "en" if (post.get("meta") or {}).get("lang") == "en" else "fr"
+    if isinstance(ch.get("caption"), str) and ch["caption"].strip():
+        out["caption"] = apply_signature(clean_caption(ch["caption"], lang), style)
+    vis = {k: v for k, v in (ch.get("visual") or {}).items() if k in ASSIST_VISUAL_KEYS} if isinstance(ch.get("visual"), dict) else {}
+    if vis.get("recommended_format") not in (None, "A", "B", "C"):
+        vis.pop("recommended_format")
+    if "chart" in vis:
+        tmp = {"visual": {"chart": vis["chart"]}}
+        normalize_chart(tmp)
+        vis["chart"] = tmp["visual"]["chart"]
+        if vis["chart"] is None:
+            vis.pop("chart")
+        elif "recommended_format" not in vis:
+            vis["recommended_format"] = (post.get("visual") or {}).get("recommended_format") or "C"
+    if vis:
+        out["visual"] = vis
+    ed = {k: v for k, v in (ch.get("editorial") or {}).items() if k in ASSIST_EDITORIAL_KEYS and isinstance(v, str)} \
+        if isinstance(ch.get("editorial"), dict) else {}
+    if ed:
+        out["editorial"] = ed
+    return {"reply": str(data.get("reply") or "C'est fait.").strip()[:600], "changes": out}
+
+
+@api_router.post("/jobs/assist")
+async def job_assist(req: AssistReq):
+    return await start_job(lambda progress: do_assist(req, progress))
+
+
 @api_router.post("/jobs/compose")
 async def job_compose(req: ComposeReq):
     return await start_job(lambda progress: do_compose(req, progress))
@@ -1209,6 +1301,7 @@ class SavePostReq(BaseModel):
     source_text: str = ""
     translated_from: Optional[str] = None  # EN post → its French original
     english_id: Optional[str] = None       # FR post → its English version
+    chat: Optional[List[Dict[str, Any]]] = None  # Studio assistant conversation
 
 
 @api_router.post("/posts/save")

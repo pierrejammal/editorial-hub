@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { BrandHeader } from "@/components/BrandHeader";
 import { VisualPreview } from "@/components/VisualPreview";
 import { PostActions } from "@/components/PostActions";
+import { AssistantPanel } from "@/components/AssistantPanel";
 import { composeFromText } from "@/lib/api";
 import { Sparkles, Loader2, PenLine } from "lucide-react";
 
@@ -139,6 +140,10 @@ const Compose = () => {
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Optimiser le visuel avec l'IA
             </button>
+            <div className="mt-6 border-t border-dashed border-slate-300 pt-5">
+              <p className="mb-3 font-serif text-lg font-bold text-forsides-ink">Assistant IA</p>
+              <AssistantPanel post={{ ...post, caption: text, source_text: post.source_text || text }} setPost={setPost} onCaption={setText} />
+            </div>
           </div>
 
           <div className="lg:sticky lg:top-24 lg:self-start">

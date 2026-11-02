@@ -631,6 +631,27 @@ function drawPieChart(ctx, chart, x, y, w, h) {
   });
 }
 
+// Wraps an uppercase label (chart title) on up to `maxLines` lines instead of cutting it with "…".
+function drawLabelLines(ctx, text, x, y, maxW, maxLines = 2) {
+  ctx.fillStyle = "#8a6a62";
+  ctx.font = "600 18px Outfit";
+  const prev = ctx.letterSpacing;
+  ctx.letterSpacing = "3px";
+  const lines = wrapWords(ctx, text, maxW).slice(0, maxLines);
+  lines.forEach((ln, i) => ctx.fillText(ln.join(" "), x, y + i * 28));
+  ctx.letterSpacing = prev || "0px";
+  return y + (lines.length - 1) * 28;
+}
+
+// Largest font size (from `size` down to `min`) at which `text` fits in `maxLines` lines.
+function fitTextSize(ctx, text, style, size, min, maxW, maxLines) {
+  for (let px = size; px >= min; px -= 1) {
+    ctx.font = `${style} ${px}px Outfit`;
+    if (wrapWords(ctx, text, maxW).length <= maxLines) return px;
+  }
+  return 0; // doesn't fit even at the minimum size
+}
+
 function renderChart(ctx, { v, title, content, headerBottom, footerTop }) {
   const chart = v.chart;
   ctx.fillStyle = BORDEAUX;
@@ -641,48 +662,62 @@ function renderChart(ctx, { v, title, content, headerBottom, footerTop }) {
   drawRule(ctx, titleBottom + 18);
 
   const maxW = VW - PAD * 2;
-  const bottom = footerTop - 34;
+  const bottom = footerTop - 30;
   let y = titleBottom + 74;
-  if (chart.title) {
-    drawLabel(ctx, ellipsize(ctx, chart.title.toUpperCase(), maxW), PAD, y);
-    y += 30;
-  }
+  if (chart.title) y = drawLabelLines(ctx, chart.title.toUpperCase(), PAD, y, maxW, 2) + 34;
 
-  // Text under the chart: only whole sentences, never a sentence cut with "…".
-  // Each block's exact height: first baseline offset + (lines - 1) * line height.
-  const LH = 38;
+  // Text blocks under the chart, measured first. Sentences are never cut in the middle:
+  // the font gets smaller instead, and only whole sentences are dropped as a last resort.
   const note = clean(chart.note);
-  ctx.font = "italic 500 28px Outfit";
-  const noteTxt = note ? fitSentences(ctx, note, maxW, 2) : "";
-  const noteLines = noteTxt && wrapWords(ctx, noteTxt, maxW).length <= 2 ? wrapWords(ctx, noteTxt, maxW).length : 0;
-  const noteH = noteLines ? 40 + (noteLines - 1) * LH + 10 : 0;
-  ctx.font = "400 27px Outfit";
-  const sumTxt = content.summary ? fitSentences(ctx, content.summary, maxW, 3) : "";
-  const sumLines = sumTxt && wrapWords(ctx, sumTxt, maxW).length <= 3 ? wrapWords(ctx, sumTxt, maxW).length : 0;
-  const sumH = sumLines ? 36 + 44 + (sumLines - 1) * LH + 10 : 0;
+  let notePx = note ? fitTextSize(ctx, note, "italic 500", 28, 21, maxW, 3) : 0;
+  let noteTxt = note;
+  if (note && !notePx) { notePx = 21; ctx.font = "italic 500 21px Outfit"; noteTxt = fitSentences(ctx, note, maxW, 3); }
+  ctx.font = `italic 500 ${notePx}px Outfit`;
+  const noteLines = note ? Math.min(3, wrapWords(ctx, noteTxt, maxW).length) : 0;
+  const noteLH = Math.round(notePx * 1.38);
+  const noteH = noteLines ? notePx + (noteLines - 1) * noteLH : 0;
 
-  const MIN_CHART = 400; // the chart comes first: drop the summary, then the note, before squeezing it
-  let showSummary = sumLines > 0;
+  const summary = content.summary || "";
+  let sumPx = summary ? fitTextSize(ctx, summary, "400", 27, 21, maxW, 3) : 0;
+  let sumTxt = summary;
+  if (summary && !sumPx) { sumPx = 21; ctx.font = "400 21px Outfit"; sumTxt = fitSentences(ctx, summary, maxW, 3); }
+  ctx.font = `400 ${sumPx}px Outfit`;
+  const sumLines = summary ? Math.min(3, wrapWords(ctx, sumTxt, maxW).length) : 0;
+  const sumLH = Math.round(sumPx * 1.4);
+  const sumH = sumLines ? 44 + sumPx + (sumLines - 1) * sumLH : 0;
+
+  // Chart height: what the bars actually need (no empty band under 2 bars), within the space left.
+  const items = chart.items.length;
+  const vertical = chart.type !== "pie" && chart.items.every((i) => /^(\d{4}|[TSQH]\d[\s-]?\d{2,4}|\d{4}[\s-]\d{2,4})$/i.test(String(i.label).trim()));
+  const natural = chart.type === "pie" ? 520 : vertical ? 520 : Math.max(220, items * 135);
+  const MIN_GAP = 34;
   let showNote = noteLines > 0;
-  let chartH = bottom - y - (showNote ? noteH : 0) - (showSummary ? sumH : 0) - 30;
-  if (chartH < MIN_CHART && showSummary) { showSummary = false; chartH += sumH; }
-  if (chartH < MIN_CHART && showNote) { showNote = false; chartH += noteH; }
-  chartH = Math.min(chartH, 640);
+  let showSummary = sumLines > 0;
+  const room = () => bottom - y - (showNote ? noteH + MIN_GAP : 0) - (showSummary ? sumH + MIN_GAP : 0);
+  if (room() < Math.min(natural, 300) && showSummary) showSummary = false;
+  if (room() < Math.min(natural, 300) && showNote) showNote = false;
+  const chartH = Math.max(160, Math.min(natural, room()));
+
+  // spread what's left evenly between the blocks instead of leaving one big hole
+  const blocks = 1 + (showNote ? 1 : 0) + (showSummary ? 1 : 0);
+  const used = chartH + (showNote ? noteH : 0) + (showSummary ? sumH : 0);
+  const gap = blocks > 1 ? Math.min(90, Math.max(MIN_GAP, (bottom - y - used) / blocks)) : 0;
 
   if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, maxW, chartH);
   else drawBarChart(ctx, chart, PAD, y, maxW, chartH);
-  y += chartH + 30;
+  y += chartH + gap;
 
   if (showNote) {
     ctx.fillStyle = "#4a3a36";
-    ctx.font = "italic 500 28px Outfit";
-    y = drawParagraph(ctx, noteTxt, PAD, y + 40, maxW, LH, false, noteLines) - LH + 10;
+    ctx.font = `italic 500 ${notePx}px Outfit`;
+    drawParagraph(ctx, noteTxt, PAD, y + notePx, maxW, noteLH, false, noteLines);
+    y += noteH + gap;
   }
-  if (showSummary && y + sumH <= bottom + 10) {
-    drawLabel(ctx, T("essential"), PAD, y + 36);
+  if (showSummary) {
+    drawLabel(ctx, T("essential"), PAD, y + 18);
     ctx.fillStyle = INK;
-    ctx.font = "400 27px Outfit";
-    drawParagraph(ctx, sumTxt, PAD, y + 80, maxW, LH, false, sumLines);
+    ctx.font = `400 ${sumPx}px Outfit`;
+    drawParagraph(ctx, sumTxt, PAD, y + 44 + sumPx, maxW, sumLH, false, sumLines);
   }
 }
 
