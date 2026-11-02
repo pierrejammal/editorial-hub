@@ -87,3 +87,6 @@ export const askAssistant = (post, message, history, { onProgress } = {}) =>
     },
     message, history,
   }, { interval: 1500, onProgress });
+
+// A source site's logo, served from our own server (so the visual can still be exported as PNG/PDF)
+export const logoProxyUrl = (url) => `${API}/logo?url=${encodeURIComponent(url)}`;

@@ -14,7 +14,7 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Response
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
@@ -287,6 +287,76 @@ def decode_html(r: requests.Response) -> str:
     return r.text
 
 
+# ---------- Publisher logo of any site ----------
+def find_site_logo(soup, page_url: str) -> Optional[str]:
+    """Best guess of the publisher's logo on an article page, in order of reliability:
+    JSON-LD publisher logo, og:logo, a logo image in the header, then the apple-touch-icon."""
+    from urllib.parse import urljoin
+
+    def absu(u):
+        return urljoin(page_url, u.strip()) if u and isinstance(u, str) and not u.startswith("data:") else None
+
+    # 1) structured data (news sites and institutions declare it for Google)
+    for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
+        try:
+            data = json.loads(tag.string or "")
+        except Exception:
+            continue
+        stack = data if isinstance(data, list) else [data]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                for key in ("publisher", "author", "sourceOrganization"):
+                    org = node.get(key)
+                    orgs = org if isinstance(org, list) else [org]
+                    for o in orgs:
+                        if isinstance(o, dict) and o.get("logo"):
+                            lg = o["logo"]
+                            u = lg.get("url") if isinstance(lg, dict) else lg
+                            if absu(u):
+                                return absu(u)
+                if node.get("@type") in ("Organization", "NewsMediaOrganization", "GovernmentOrganization") and node.get("logo"):
+                    lg = node["logo"]
+                    u = lg.get("url") if isinstance(lg, dict) else lg
+                    if absu(u):
+                        return absu(u)
+                stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+            elif isinstance(node, list):
+                stack.extend(node)
+    # 2) explicit logo meta
+    for name in ("og:logo", "logo"):
+        tag = soup.find("meta", attrs={"property": name}) or soup.find("meta", attrs={"name": name})
+        if tag and absu(tag.get("content")):
+            return absu(tag.get("content"))
+    # 3) an image that says it is the logo, preferably in the header / site brand link
+    scopes = [soup.find("header"), soup.find(class_=re.compile(r"(header|brand|logo)", re.I)), soup]
+    for scope in scopes:
+        if not scope:
+            continue
+        for img in scope.find_all("img", limit=60):
+            blob = " ".join([img.get("alt") or "", " ".join(img.get("class") or []), img.get("id") or "", img.get("src") or ""]).lower()
+            if "logo" in blob or "marianne" in blob:
+                src = img.get("src") or img.get("data-src") or ""
+                if absu(src) and not src.lower().endswith(".gif"):
+                    return absu(src)
+    # 4) the site icon at its largest (square, but always available)
+    icons = []
+    for link in soup.find_all("link", rel=True):
+        rel = " ".join(link.get("rel")).lower()
+        if "apple-touch-icon" in rel or ("icon" in rel and link.get("sizes")):
+            size = 0
+            m = re.match(r"(\d+)x\d+", link.get("sizes") or "")
+            if m:
+                size = int(m.group(1))
+            elif "apple-touch-icon" in rel:
+                size = 180
+            if size >= 96 and absu(link.get("href")):
+                icons.append((size, absu(link.get("href"))))
+    if icons:
+        return max(icons)[1]
+    return None
+
+
 def scrape_url(url: str) -> Dict[str, Any]:
     check_public_url(url)
     headers = {
@@ -305,7 +375,7 @@ def scrape_url(url: str) -> Dict[str, Any]:
         html = None
 
     domain = urlparse(url).netloc.replace("www.", "")
-    title = site_name = pub = image = None
+    title = site_name = pub = image = logo = None
     text = ""
 
     if html:
@@ -321,6 +391,10 @@ def scrape_url(url: str) -> Dict[str, Any]:
         title = meta("og:title", "twitter:title") or (soup.title.string.strip() if soup.title and soup.title.string else "")
         site_name = meta("og:site_name")
         image = meta("og:image", "twitter:image")
+        try:
+            logo = find_site_logo(soup, url)  # before the header is stripped below
+        except Exception as e:
+            logger.info(f"logo detection failed: {e}")
         pub = meta("article:published_time", "og:published_time", "datePublished", "publication_date")
         if not pub:
             t = soup.find("time")
@@ -350,7 +424,7 @@ def scrape_url(url: str) -> Dict[str, Any]:
                             detail="Cette source bloque l'accès automatisé ou son contenu est insuffisant. Essayez un autre lien.")
 
     return {"title": title or "", "site_name": site_name or domain, "domain": domain,
-            "published": pub, "image": image, "text": text}
+            "published": pub, "image": image, "logo": logo, "text": text}
 
 
 # ---------- Models ----------
@@ -601,6 +675,7 @@ CONTENU:
         "publication_date": scraped["published"] or "",
         "date_label": french_date_label(pub_dt),
         "image_url": scraped.get("image") or "",
+        "source_logo_url": scraped.get("logo") or "",
     })
     data["source_text"] = scraped["text"]  # what the figures are checked against in the Studio
     if not data.get("sources"):
@@ -935,6 +1010,7 @@ Le bloc scoring reprend/affine le scoring déjà établi (score global {t.get('s
         "date_label": t.get("date_label") or french_date_label(None),
         "image_url": "",
         "article_read": bool(article),
+        "source_logo_url": (article or {}).get("logo") or "",
         "origin_url": t.get("source_url", ""),  # search link, to recognise this topic in later searches
     })
     # what the figures will be checked against in the Studio
@@ -1360,6 +1436,36 @@ async def delete_post(post_id: str):
 
 TEMPLATE_KEYS = {"background", "accent", "titles", "secondary", "text", "lines", "bannerText", "bannerShape",
                  "bulletShape", "ruleStyle", "titleFont", "showDate", "showSignature", "signature"}
+
+
+LOGO_MAX_BYTES = 2_000_000
+
+
+@api_router.get("/logo")
+async def logo_proxy(url: str):
+    """Serves a source site's logo from our own domain, so the visual can draw and export it
+    (browsers forbid exporting a canvas that contains images from other sites). Cached in MongoDB."""
+    cached = await db.logos.find_one({"url": url})
+    if cached:
+        return Response(content=cached["data"], media_type=cached["ctype"], headers={"Cache-Control": "public, max-age=604800"})
+    await asyncio.to_thread(check_public_url, url)
+
+    def fetch():
+        r = requests.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0 FORSIDES News Studio"}, stream=True)
+        r.raise_for_status()
+        ctype = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
+        data = r.raw.read(LOGO_MAX_BYTES + 1, decode_content=True)
+        return ctype, data
+
+    try:
+        ctype, data = await asyncio.to_thread(fetch)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Logo introuvable")
+    if len(data) > LOGO_MAX_BYTES or not ctype.startswith("image/"):
+        raise HTTPException(status_code=415, detail="Ce fichier n'est pas un logo utilisable")
+    await db.logos.update_one({"url": url}, {"$set": {"url": url, "ctype": ctype, "data": data,
+                                                      "at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    return Response(content=data, media_type=ctype, headers={"Cache-Control": "public, max-age=604800"})
 
 
 @api_router.get("/settings/template")

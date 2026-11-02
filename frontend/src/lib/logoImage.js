@@ -12,8 +12,10 @@ const loadImg = (src) => new Promise((resolve, reject) => {
 export async function prepareLogo(dataUrl, maxSide = 700) {
   const img = await loadImg(dataUrl);
   const c = document.createElement("canvas");
-  c.width = img.naturalWidth;
-  c.height = img.naturalHeight;
+  // SVG files without a declared size report 0: give them a workable size
+  c.width = img.naturalWidth || 600;
+  c.height = img.naturalHeight || Math.round(c.width / ((img.width && img.height) ? img.width / img.height : 3));
+  if (!c.width || !c.height) return dataUrl;
   const ctx = c.getContext("2d");
   ctx.drawImage(img, 0, 0);
   let data;

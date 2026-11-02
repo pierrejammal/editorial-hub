@@ -6,8 +6,9 @@ import { VisualTextEditor } from "@/components/VisualTextEditor";
 import { TemplateEditor } from "@/components/TemplateEditor";
 import { CarouselDialog } from "@/components/CarouselDialog";
 import { prepareLogo } from "@/lib/logoImage";
+import { resolveSourceLogo } from "@/lib/sourceLogo";
 import {
-  renderVisual, loadImage, sourceLogoSrc, hasChart, VW, VH, FONT_SET,
+  renderVisual, loadImage, hasChart, VW, VH, FONT_SET,
 } from "@/lib/visualRender";
 
 const FORMAT_LABELS = { A: "Analyse", B: "Data", C: "Graphique" };
@@ -109,13 +110,17 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     return () => { cancelled = true; clearTimeout(t); };
   }, []);
 
-  // auto source logo from institution library (unless user uploaded one)
+  // source logo: imported > institution library > found on the source's website (or hidden)
+  const [logoOrigin, setLogoOrigin] = useState("none");
   useEffect(() => {
-    if (uploadedLogoSrc) { loadImage(uploadedLogoSrc).then(setSourceLogo); return; }
-    const src = sourceLogoSrc(post.meta?.source);
-    if (src) loadImage(src).then(setSourceLogo);
-    else setSourceLogo(null);
-  }, [post.meta?.source, uploadedLogoSrc]);
+    let cancelled = false;
+    resolveSourceLogo(post).then(({ img, origin }) => {
+      if (cancelled) return;
+      setSourceLogo(img);
+      setLogoOrigin(origin);
+    });
+    return () => { cancelled = true; };
+  }, [post.meta?.source, post.meta?.source_logo_url, uploadedLogoSrc, v.hide_source_logo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const localPost = { ...post, visual: { ...v, title_short: title } };
   const images = { logoImg, sourceLogoImg: sourceLogo };
@@ -227,6 +232,19 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
           className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3.5 py-2 text-sm font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red">
           <LayoutTemplate className="h-4 w-4" /> Format
         </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-forsides-slate">
+        <label className="inline-flex items-center gap-2">
+          <input type="checkbox" data-testid="visual-show-source-logo" checked={!v.hide_source_logo}
+            onChange={(e) => updateVisual({ hide_source_logo: !e.target.checked })} />
+          Afficher le logo de la source
+        </label>
+        {!v.hide_source_logo && (
+          <span className="text-slate-400">
+            {{ upload: "Logo importé", library: "Logo officiel (bibliothèque)", site: "Logo trouvé sur le site de la source",
+              none: "Aucun logo trouvé : le nom de la source est affiché" }[logoOrigin] || ""}
+          </span>
+        )}
       </div>
       {sourceLogo && (
         <label className="flex items-center gap-3 text-xs text-forsides-slate">

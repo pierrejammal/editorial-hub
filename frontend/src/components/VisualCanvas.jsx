@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
-import { renderVisual, loadImage, sourceLogoSrc, FONT_SET, VW, VH } from "@/lib/visualRender";
+import { renderVisual, loadImage, FONT_SET, VW, VH } from "@/lib/visualRender";
+import { resolveSourceLogo } from "@/lib/sourceLogo";
 import { renderCarousel } from "@/lib/carouselRender";
 import { useStudio } from "@/context/StudioContext";
 
@@ -12,9 +13,9 @@ export const VisualCanvas = ({ post, version = "A", page = null, className = "",
   useEffect(() => {
     let cancelled = false;
     const draw = async () => {
-      const [logoImg, sourceLogoImg] = await Promise.all([
+      const [logoImg, { img: sourceLogoImg }] = await Promise.all([
         loadImage("/forsides-logo.png"),
-        loadImage(sourceLogoSrc(post.meta?.source)),
+        resolveSourceLogo(post),
       ]);
       const c = ref.current;
       if (cancelled || !c) return;

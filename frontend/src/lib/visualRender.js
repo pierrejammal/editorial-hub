@@ -107,9 +107,14 @@ const LIB = [
   { k: ["insee"], img: "/logos/insee.png" },
   { k: ["ocde", "oecd"], img: "/logos/ocde.png" },
   { k: ["commission européenne", "ec.europa", "european commission"], img: "/logos/commission.png" },
-  { k: ["ifrs"], img: "/logos/ifrs.png" },
-  { k: ["sécurité sociale", "securite sociale", "ameli", "urssaf"], img: "/logos/securitesociale.png" },
-  { k: ["parlement", "assemblée", "sénat", "ministère", "ministere", "gouvernement", "service-public", "legifrance", "légifrance"], img: "/logos/republique.png" },
+  { k: ["ifrs", "iasb"], img: "/logos/ifrs.png" },
+  { k: ["sécurité sociale", "securite sociale", "ameli", "urssaf", "assurance maladie", "cnam", "caisse nationale d'assurance",
+    "assurance retraite", "cnav", "cnaf", "caisse d'allocations", "msa", "mutualité sociale agricole"], img: "/logos/securitesociale.png" },
+  { k: ["assemblée nationale", "sénat", "senat", "parlement français", "ministère", "ministere", "gouvernement", "service-public",
+    "legifrance", "légifrance", "journal officiel de la république", "jorf", "premier ministre", "élysée", "elysee",
+    "conseil d'état", "conseil constitutionnel", "conseil d'orientation des retraites", "cor-retraites", "haut conseil",
+    "hcaam", "hcfips", "direction de la sécurité sociale", "dares", "trésor", "tresor", "economie.gouv", "solidarites.gouv",
+    "sante.gouv", "travail-emploi.gouv"], img: "/logos/republique.png" },
 ];
 
 export const sourceIdentity = (source) => {
@@ -820,7 +825,7 @@ export function drawHeader(ctx, post, images) {
       sh = sw / ar;
     }
     ctx.drawImage(sourceLogoImg, VW - PAD - sw, logoBottom + 22, sw, sh);
-  } else if (post.meta?.source) {
+  } else if (post.meta?.source && !post.visual?.hide_source_logo) {
     const id = sourceIdentity(post.meta.source);
     if (id) drawEmblem(ctx, id, VW - PAD, logoBottom + 18, post.meta.source);
   }
