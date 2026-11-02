@@ -35,13 +35,24 @@ export const AssistantPanel = ({ post, setPost, onCaption }) => {
     try {
       const { reply, changes = {} } = await askAssistant(post, message, history);
       const touched = Object.keys(changes).length > 0;
+      const LABELS = { caption: "texte LinkedIn", title_short: "titre", recommended_format: "format", chart: "graphique",
+        data_points: "faits clés (carrousel p. 2-3)", key_figure_value: "chiffre clé", key_figure_label: "libellé du chiffre",
+        important_date: "échéance", custom: "texte du visuel", insight_line: "phrase finale", subtitle: "sous-titre",
+        fact: "L'essentiel", what_changes: "Ce qui change", why_important: "Pourquoi c'est important", insight: "À retenir",
+        key_figure: "chiffre clé", angle: "angle" };
+      const fields = [
+        ...(changes.caption ? ["caption"] : []),
+        ...Object.keys(changes.visual || {}),
+        ...Object.keys(changes.editorial || {}),
+      ].map((k) => LABELS[k] || k);
+      const summary = touched ? `\n\n✓ Modifié : ${[...new Set(fields)].join(", ")}` : "\n\nAucune modification appliquée.";
       if (touched) setUndo({ caption: post.caption, visual: post.visual, editorial: post.editorial });
       setPost((p) => ({
         ...p,
         caption: changes.caption ?? p.caption,
         visual: { ...(p.visual || {}), ...(changes.visual || {}) },
         editorial: { ...(p.editorial || {}), ...(changes.editorial || {}) },
-        chat: [...(p.chat || []), { role: "assistant", content: reply, changed: touched }].slice(-30),
+        chat: [...(p.chat || []), { role: "assistant", content: reply + summary, changed: touched }].slice(-30),
       }));
       if (changes.caption && onCaption) onCaption(changes.caption);
     } catch (e) {

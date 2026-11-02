@@ -27,7 +27,7 @@ export const CarouselDialog = ({ post, images, template, onClose }) => {
       onClose();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [post, template, images]); // redrawn live when the post changes (e.g. after the AI assistant)
 
   const download = () => {
     setBusy(true);

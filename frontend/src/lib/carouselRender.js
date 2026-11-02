@@ -202,22 +202,66 @@ function dataPage(ctx, d, images, n, total) {
   const top = miniHeader(ctx, images, n, total);
   const chart = d.v.chart;
   if (hasChart(d.post)) {
+    // chart sized to what it needs, its reading sentence in full, then the key facts;
+    // the whole block is centred so the page is never half empty
     bigLabel(ctx, L.figures, top + 90);
-    let y = top + 150;
-    if (clean(chart.title)) {
-      drawLabel(ctx, chart.title.toUpperCase(), PAD, y);
-      y += 40;
-    }
+    const areaTop = top + 150;
+    const areaBottom = VH - 170;
+    const ctitle = clean(chart.title).toUpperCase();
     const note = clean(chart.note);
-    const noteH = note ? 150 : 0;
-    const h = Math.min(820, VH - 220 - y - noteH);
-    if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, MAXW, h);
-    else drawBarChart(ctx, chart, PAD, y, MAXW, h);
-    if (note) {
+    const facts = (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3);
+    const vertical = chart.type !== "pie" && chart.items.every((i) => /^(\d{4}|[TSQH]\d[\s-]?\d{2,4}|\d{4}[\s-]\d{2,4})$/i.test(String(i.label).trim()));
+    const natural = chart.type === "pie" || vertical ? 560 : Math.max(260, chart.items.length * 150);
+
+    const measure = (notePx, chartH) => {
+      let h = 0;
+      ctx.font = "600 22px Outfit";
+      const tl = ctitle ? Math.min(2, wrapWords(ctx, ctitle, MAXW).length) : 0;
+      h += tl ? tl * 32 + 26 : 0;
+      h += chartH;
+      ctx.font = `italic 500 ${notePx}px Outfit`;
+      const nl = note ? wrapWords(ctx, note, MAXW).length : 0;
+      h += nl ? 50 + nl * Math.round(notePx * 1.35) : 0;
+      ctx.font = "600 32px Outfit";
+      const fh = facts.reduce((a, f) => a + Math.min(2, wrapWords(ctx, f, MAXW - 50).length) * 42 + 20, 0);
+      h += facts.length ? 60 + fh : 0;
+      return { h, tl, nl };
+    };
+    let notePx = 34;
+    let chartH = natural;
+    let m = measure(notePx, chartH);
+    while (m.h > areaBottom - areaTop && notePx > 22) { notePx -= 2; m = measure(notePx, chartH); }
+    while (m.h > areaBottom - areaTop && chartH > 220) { chartH -= 20; m = measure(notePx, chartH); }
+
+    let y = areaTop + Math.max(0, (areaBottom - areaTop - m.h) / 2);
+    if (m.tl) {
+      ctx.fillStyle = "#8a6a62";
+      ctx.font = "600 22px Outfit";
+      const prev = ctx.letterSpacing;
+      ctx.letterSpacing = "3px";
+      wrapWords(ctx, ctitle, MAXW).slice(0, 2).forEach((ln, i) => ctx.fillText(ln.join(" "), PAD, y + 22 + i * 32));
+      ctx.letterSpacing = prev || "0px";
+      y += m.tl * 32 + 26;
+    }
+    if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, MAXW, chartH);
+    else drawBarChart(ctx, chart, PAD, y, MAXW, chartH);
+    y += chartH;
+    if (m.nl) {
       ctx.fillStyle = "#4a3a36";
-      ctx.font = "italic 500 34px Outfit";
-      const t = fitSentences(ctx, note, MAXW, 3);
-      drawParagraph(ctx, t, PAD, y + h + 70, MAXW, 46, false, 3);
+      ctx.font = `italic 500 ${notePx}px Outfit`;
+      const lh = Math.round(notePx * 1.35);
+      drawParagraph(ctx, note, PAD, y + 50 + notePx, MAXW, lh, false, m.nl);
+      y += 50 + m.nl * lh;
+    }
+    if (facts.length) {
+      y += 60;
+      facts.forEach((f, i) => {
+        drawBullet(ctx, PAD, y + 6, 18, i % 2 === 0 ? BRICK : CORAL);
+        ctx.fillStyle = BORDEAUX;
+        ctx.font = "600 32px Outfit";
+        const end = drawParagraph(ctx, f, PAD + 50, y + 28, MAXW - 50, 42, false, 2);
+        y = end - 42 + 20 + 14;
+      });
     }
   } else {
     bigLabel(ctx, L.keyFigures, top + 90);
@@ -297,7 +341,7 @@ export function planCarousel(post) {
   const takeaway = clean(content.points.find((p) => TAKEAWAY_RE.test(p.label))?.text) ||
     clean(ed.insight) || clean(v.insight_line);
   const hasData = hasChart(post) || clean(v.important_date) || (v.data_points || []).filter((x) => clean(x)).length >= 2;
-  const d = { post, v, title, content, takeaway, factsFree: hasChart(post) || !hasData };
+  const d = { post, v, title, content, takeaway, factsFree: !hasData };
 
   const pages = [(ctx, im, n, t) => coverPage(ctx, d, im, n, t)];
   if (content.summary) pages.push((ctx, im, n, t) => essentialPage(ctx, d, im, n, t));
