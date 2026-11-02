@@ -79,14 +79,18 @@ export const getTemplate = () => http.get("/settings/template").then((r) => r.da
 export const saveTemplate = (t) => http.put("/settings/template", t).then((r) => r.data);
 
 // Studio assistant: returns { reply, changes: { caption?, visual?, editorial? } }
-export const askAssistant = (post, message, history, { onProgress } = {}) =>
-  runJob("/jobs/assist", {
+// Only what the AI needs is sent: no imported logo image (heavy data URL), source cut to 6000 chars.
+export const askAssistant = (post, message, history, { onProgress } = {}) => {
+  const { source_logo, ...visual } = post.visual || {}; // eslint-disable-line no-unused-vars
+  const { source, lang, source_title } = post.meta || {};
+  return runJob("/jobs/assist", {
     post: {
-      caption: post.caption || "", visual: post.visual || {}, editorial: post.editorial || {},
-      meta: post.meta || {}, source_text: post.source_text || "",
+      caption: post.caption || "", visual, editorial: post.editorial || {},
+      meta: { source, lang, source_title }, source_text: (post.source_text || "").slice(0, 6000),
     },
-    message, history,
+    message, history: (history || []).slice(-8).map(({ role, content }) => ({ role, content: String(content || "").slice(0, 800) })),
   }, { interval: 1500, onProgress });
+};
 
 // A source site's logo, served from our own server (so the visual can still be exported as PNG/PDF)
 export const logoProxyUrl = (url) => `${API}/logo?url=${encodeURIComponent(url)}`;

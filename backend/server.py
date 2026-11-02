@@ -1176,6 +1176,10 @@ Règles:
   "A" = Analyse (L'essentiel = editorial.fact + 3 points editorial.what_changes / why_important / insight),
   "B" = Data (key_figure_value + key_figure_label, important_date, data_points, et les 3 points),
   "C" = Graphique (visual.chart: {CHART_SCHEMA} + L'essentiel).
+- Le carrousel PDF est construit à partir des mêmes champs: page 1 = titre; page 2 « L'essentiel » =
+  editorial.fact (ou visual.custom.summary) + chiffre clé + visual.data_points; page 3 « Les chiffres » =
+  visual.chart ou data_points; page 4 « Décryptage » = les points; page 5 « À retenir » = editorial.insight.
+  Pour enrichir une page du carrousel, complète les champs correspondants (sans inventer).
 - Si visual.custom existe, c'est LUI qui est affiché à la place de L'essentiel et des points: modifie visual.custom
   ({{"summary": "...", "points": [{{"label": "...", "text": "..."}}]}}) plutôt que editorial.
 - Textes du visuel courts: titre 8 à 16 mots, points 1 phrase, data_points 3 à 8 mots.

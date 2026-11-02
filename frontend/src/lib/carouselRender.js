@@ -111,25 +111,90 @@ function coverPage(ctx, d, images, n, total) {
   pageCounter(ctx, n, total);
 }
 
+// Page 2: key figure + summary + a few facts, sized up and centred so the page is never half empty.
 function essentialPage(ctx, d, images, n, total) {
   const top = miniHeader(ctx, images, n, total);
   bigLabel(ctx, L.essential, top + 90);
-  let y = top + 170;
+  const areaTop = top + 150;
+  const areaBottom = VH - 170;
   const fig = clean(d.v.key_figure_value);
-  if (fig) {
-    ctx.fillStyle = BRICK;
-    const px = fitFontSize(ctx, fig, "Anton", 190, MAXW, 80);
-    ctx.fillText(fig, PAD, y + px * 0.85);
-    y += px + 10;
-    if (clean(d.v.key_figure_label)) {
+  const figLabel = clean(d.v.key_figure_label);
+  // short facts not already shown on the "chiffres" page
+  const facts = d.factsFree ? (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3) : [];
+  const src = d.content.source ? `${L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}` : "";
+
+  // measure everything at a given summary size, then pick the largest size that fits
+  const layout = (sumPx) => {
+    let h = 0;
+    const parts = [];
+    if (fig) {
+      ctx.font = "190px Anton";
+      const px = fitFontSize(ctx, fig, "Anton", 190, MAXW, 80);
+      parts.push({ k: "fig", px, h: px });
+      h += px;
+      if (figLabel) {
+        ctx.font = "500 34px Outfit";
+        const lines = Math.min(3, wrapWords(ctx, figLabel, MAXW).length);
+        parts.push({ k: "figLabel", lines, h: 20 + lines * 46 });
+        h += 20 + lines * 46;
+      }
+      h += 50;
+    }
+    if (d.content.summary) {
+      ctx.font = `400 ${sumPx}px Outfit`;
+      const lh = Math.round(sumPx * 1.38);
+      const lines = wrapWords(ctx, d.content.summary, MAXW).length;
+      parts.push({ k: "sum", px: sumPx, lh, lines, h: lines * lh });
+      h += lines * lh;
+    }
+    if (facts.length) {
+      ctx.font = "600 34px Outfit";
+      const fh = facts.reduce((a, f) => a + Math.min(2, wrapWords(ctx, f, MAXW - 50).length) * 44 + 22, 0);
+      parts.push({ k: "facts", h: 60 + fh });
+      h += 60 + fh;
+    }
+    if (src) { parts.push({ k: "src", h: 90 }); h += 90; }
+    return { h, parts };
+  };
+  let sumPx = 64;
+  let lay = layout(sumPx);
+  while (sumPx > 30 && lay.h > areaBottom - areaTop) { sumPx -= 2; lay = layout(sumPx); }
+
+  let y = areaTop + Math.max(0, (areaBottom - areaTop - lay.h) / 2); // centred block
+  lay.parts.forEach((p) => {
+    if (p.k === "fig") {
+      ctx.fillStyle = BRICK;
+      ctx.font = `${p.px}px Anton`;
+      ctx.fillText(fig, PAD, y + p.px * 0.85);
+      y += p.px;
+    } else if (p.k === "figLabel") {
       ctx.fillStyle = INK;
       ctx.font = "500 34px Outfit";
-      y = drawParagraph(ctx, d.v.key_figure_label, PAD, y + 20, MAXW, 46, false, 3) + 50;
+      drawParagraph(ctx, figLabel, PAD, y + 20 + 34, MAXW, 46, false, 3);
+      y += p.h + 50;
+    } else if (p.k === "sum") {
+      if (!fig) y += 0;
+      ctx.fillStyle = INK;
+      ctx.font = `400 ${p.px}px Outfit`;
+      drawParagraph(ctx, d.content.summary, PAD, y + p.px, MAXW, p.lh, false, p.lines);
+      y += p.h;
+    } else if (p.k === "facts") {
+      y += 60;
+      facts.forEach((f, i) => {
+        drawBullet(ctx, PAD, y + 8, 18, i % 2 === 0 ? BRICK : CORAL);
+        ctx.fillStyle = BORDEAUX;
+        ctx.font = "600 34px Outfit";
+        const end = drawParagraph(ctx, f, PAD + 50, y + 30, MAXW - 50, 44, false, 2);
+        y = end - 44 + 22 + 14;
+      });
+    } else if (p.k === "src") {
+      drawRule(ctx, y + 40);
+      ctx.fillStyle = "#4a3a36";
+      ctx.font = "500 28px Outfit";
+      ctx.fillText(src, PAD, y + 90);
+      y += p.h;
     }
-  }
-  const b = fitBlock(ctx, d.content.summary, 400, 52, 30, VH - 200 - y);
-  ctx.fillStyle = INK;
-  drawParagraph(ctx, b.text, PAD, y + b.px, MAXW, b.lh, false, b.maxLines);
+  });
   swipeHint(ctx);
 }
 
@@ -232,7 +297,7 @@ export function planCarousel(post) {
   const takeaway = clean(content.points.find((p) => TAKEAWAY_RE.test(p.label))?.text) ||
     clean(ed.insight) || clean(v.insight_line);
   const hasData = hasChart(post) || clean(v.important_date) || (v.data_points || []).filter((x) => clean(x)).length >= 2;
-  const d = { post, v, title, content, takeaway };
+  const d = { post, v, title, content, takeaway, factsFree: hasChart(post) || !hasData };
 
   const pages = [(ctx, im, n, t) => coverPage(ctx, d, im, n, t)];
   if (content.summary) pages.push((ctx, im, n, t) => essentialPage(ctx, d, im, n, t));

@@ -45,7 +45,15 @@ export const AssistantPanel = ({ post, setPost, onCaption }) => {
       }));
       if (changes.caption && onCaption) onCaption(changes.caption);
     } catch (e) {
-      const detail = e.detail || e.response?.data?.detail || "L'assistant n'a pas pu répondre, réessayez.";
+      // say what actually went wrong, so the problem can be fixed
+      const st = e.response?.status;
+      const d = e.detail || (typeof e.response?.data?.detail === "string" ? e.response.data.detail : "");
+      const detail = d
+        || (st === 404 ? "L'assistant n'est pas encore actif sur le serveur : redémarrez le serveur (supervisorctl restart backend)."
+        : st === 413 ? "La demande est trop lourde pour le serveur."
+        : st ? `Le serveur a répondu avec l'erreur ${st}. Réessayez.`
+        : e.message === "Délai dépassé, réessayez." ? "L'IA a mis trop de temps à répondre, réessayez."
+        : "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.");
       setPost((p) => ({ ...p, chat: [...(p.chat || []), { role: "assistant", content: detail, error: true }].slice(-30) }));
     } finally {
       setBusy(false);
