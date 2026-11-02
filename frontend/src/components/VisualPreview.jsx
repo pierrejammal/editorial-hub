@@ -4,17 +4,20 @@ import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import { VisualTextEditor } from "@/components/VisualTextEditor";
 import { TemplateEditor } from "@/components/TemplateEditor";
-import { CarouselDialog } from "@/components/CarouselDialog";
+import { renderCarousel } from "@/lib/carouselRender";
+import { jpegsToPdf } from "@/lib/pdf";
 import { prepareLogo } from "@/lib/logoImage";
 import { resolveSourceLogo } from "@/lib/sourceLogo";
 import {
   renderVisual, loadImage, hasChart, VW, VH, FONT_SET,
 } from "@/lib/visualRender";
 
-const FORMAT_LABELS = { A: "Analyse", B: "Data", C: "Graphique" };
+// "K" = carousel: the preview shows its pages one by one, download gives the PDF
+const FORMAT_LABELS = { A: "Analyse", B: "Data", C: "Graphique", K: "Carrousel" };
 const CONCEPT_LABELS = { A: "Analyse", B: "Data / Insight", C: "Graphique" };
 const initialFormat = (post) => {
   const f = post.visual?.recommended_format;
+  if (post.visual?.open_carousel || f === "K") return "K";
   if (f === "C" && hasChart(post)) return "C";
   return f === "B" ? "B" : "A";
 };
@@ -59,7 +62,11 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const v = post.visual || {};
   const [version, setVersion] = useState(() => initialFormat(post));
   const chartOk = hasChart(post);
-  const formats = chartOk ? ["A", "B", "C"] : ["A", "B"];
+  const formats = chartOk ? ["A", "B", "C", "K"] : ["A", "B", "K"];
+  const concepts = formats.filter((f) => f !== "K");
+  const [carPage, setCarPage] = useState(0);
+  const [carCount, setCarCount] = useState(0);
+  const isCarousel = version === "K";
   const [title, setTitle] = useState(v.title_short || post.editorial?.fact || post.meta?.topic || "");
   // the imported logo is stored with the post (visual.source_logo), so it survives reloads and saves
   const uploadedLogoSrc = v.source_logo || null;
@@ -68,9 +75,9 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const [fontsReady, setFontsReady] = useState(false);
   const [showConcepts, setShowConcepts] = useState(false);
   // opened right away when "Carrousel" was chosen on the home page
-  const [showCarousel, setShowCarousel] = useState(Boolean(v.open_carousel));
+  // "Carrousel" chosen on the home page: start on the carousel format
   useEffect(() => {
-    if (v.open_carousel) updateVisual({ open_carousel: false });
+    if (v.open_carousel) updateVisual({ open_carousel: false, recommended_format: "K" });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [zoom, setZoom] = useState(null); // full-screen preview (data URL of the canvas)
   const logoInput = useRef(null);
@@ -128,8 +135,21 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   useEffect(() => {
     const c = canvasRef.current;
     if (!c) return;
+    let thumbSrc = c;
     try {
-      renderVisual(c.getContext("2d"), { post: localPost, version, images, template });
+      if (isCarousel) {
+        const pages = renderCarousel(localPost, images, (w, h) => { const x = document.createElement("canvas"); x.width = w; x.height = h; return x; }, template);
+        const n = pages.length;
+        setCarCount(n);
+        const pg = Math.min(carPage, n - 1);
+        if (pg !== carPage) setCarPage(pg);
+        const ctx = c.getContext("2d");
+        ctx.clearRect(0, 0, VW, VH);
+        ctx.drawImage(pages[pg], 0, 0);
+        thumbSrc = pages[0]; // "Mes posts" shows the cover
+      } else {
+        renderVisual(c.getContext("2d"), { post: localPost, version, images, template });
+      }
     } catch (e) {
       console.error("visual render failed", e); // a drawing bug must never crash the whole page
       return;
@@ -138,14 +158,30 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       try {
         const t = document.createElement("canvas");
         t.width = 320; t.height = 400;
-        t.getContext("2d").drawImage(c, 0, 0, 320, 400);
+        t.getContext("2d").drawImage(thumbSrc, 0, 0, 320, 400);
         onThumb(t.toDataURL("image/jpeg", 0.6));
       } catch (e) { /* tainted */ }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, frozen, template]);
+  }, [version, carPage, title, logoImg, sourceLogo, fontsReady, post.visual, post.editorial, post.meta, post.caption, frozen, template]);
+
+  const downloadPdf = () => {
+    try {
+      const pages = renderCarousel(localPost, images, (w, h) => { const x = document.createElement("canvas"); x.width = w; x.height = h; return x; }, template);
+      const blob = jpegsToPdf(pages.map((p) => ({ dataUrl: p.toDataURL("image/jpeg", 0.92), width: p.width, height: p.height })));
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "forsides-carrousel.pdf";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast.success(`Carrousel téléchargé (${pages.length} pages) · LinkedIn : « Ajouter un document »`);
+    } catch (e) {
+      toast.error("Export impossible : le logo importé est protégé. Réimportez-le depuis votre ordinateur.");
+    }
+  };
 
   const download = () => {
+    if (isCarousel) { downloadPdf(); return; }
     try {
       const url = canvasRef.current.toDataURL("image/png");
       const a = document.createElement("a");
@@ -191,8 +227,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
           <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-slate-400">
             Choisissez le concept le plus fort
           </p>
-          <div className={`grid gap-3 ${formats.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
-            {formats.map((f, i) => (
+          <div className={`grid gap-3 ${concepts.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+            {concepts.map((f, i) => (
               <ConceptThumb key={f} post={localPost} version={f} images={images} fontsReady={fontsReady} template={template}
                 active={version === f} onChoose={() => chooseConcept(f)} label={`Concept ${i + 1} · ${CONCEPT_LABELS[f]}`} />
             ))}
@@ -270,9 +306,9 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     <div className="flex flex-wrap gap-2">
       <button data-testid="visual-download" onClick={download}
         className="inline-flex items-center gap-1.5 rounded-full bg-forsides-red px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-forsides-bordeaux">
-        <Download className="h-4 w-4" /> Télécharger PNG
+        <Download className="h-4 w-4" /> {isCarousel ? "Télécharger le PDF" : "Télécharger PNG"}
       </button>
-      <button data-testid="visual-carousel" onClick={() => setShowCarousel(true)}
+      <button data-testid="visual-carousel" onClick={() => setVersion("K")}
         className="inline-flex items-center gap-1.5 rounded-full border border-forsides-red px-4 py-2 text-sm font-semibold text-forsides-red transition-colors hover:bg-forsides-red hover:text-white">
         <GalleryHorizontal className="h-4 w-4" /> Carrousel PDF
       </button>
@@ -286,6 +322,20 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   );
 
   const split = Boolean(frozen);
+
+  // page navigation shown on top of the preview in carousel format
+  const navBtn = "absolute top-1/2 -translate-y-1/2 rounded-full bg-white/90 px-2.5 py-1 text-lg leading-none text-forsides-ink shadow hover:bg-forsides-red hover:text-white disabled:opacity-30";
+  const carNav = (
+    <>
+      <button type="button" aria-label="Page précédente" data-testid="carousel-prev" disabled={carPage <= 0}
+        onClick={(e) => { e.stopPropagation(); setCarPage((p) => Math.max(0, p - 1)); }} className={`${navBtn} left-2`}>‹</button>
+      <button type="button" aria-label="Page suivante" data-testid="carousel-next" disabled={carPage >= carCount - 1}
+        onClick={(e) => { e.stopPropagation(); setCarPage((p) => Math.min(carCount - 1, p + 1)); }} className={`${navBtn} right-2`}>›</button>
+      <span className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-forsides-ink/85 px-3 py-1 font-mono text-[11px] text-white">
+        Page {Math.min(carPage + 1, carCount || 1)} / {carCount || 1}
+      </span>
+    </>
+  );
 
   const openZoom = () => {
     try { setZoom(canvasRef.current.toDataURL("image/png")); } catch { /* protected logo: no zoom */ }
@@ -326,12 +376,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
             <button data-testid="visual-zoom" onClick={openZoom} title="Agrandir" className={iconBtn}>
               <Maximize2 className="h-3.5 w-3.5" />
             </button>
-            <button data-testid="visual-download" onClick={download} title="Télécharger le PNG (1200×1500)"
+            <button data-testid="visual-download" onClick={download}
+              title={isCarousel ? "Télécharger le carrousel en PDF (LinkedIn : « Ajouter un document »)" : "Télécharger le PNG (1200×1500)"}
               className="inline-flex items-center gap-1.5 rounded-full bg-forsides-red px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-forsides-bordeaux">
-              <Download className="h-3.5 w-3.5" /> PNG
-            </button>
-            <button data-testid="visual-carousel" onClick={() => setShowCarousel(true)} title="Carrousel LinkedIn en PDF" className={iconBtn}>
-              <GalleryHorizontal className="h-3.5 w-3.5" /> <span className="hidden xl:inline">Carrousel</span>
+              <Download className="h-3.5 w-3.5" /> {isCarousel ? "PDF" : "PNG"}
             </button>
             {post.caption && (
               <button data-testid="visual-export-full" onClick={exportFull} title="Exporter le post complet (visuel + texte)" className={iconBtn}>
@@ -343,11 +391,14 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
 
         {/* the visual fits the visible height of the column, keeping its 4:5 ratio */}
         <div className="flex justify-center">
-          <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
-            onClick={openZoom}
-            title="Cliquer pour agrandir"
-            style={fit ? { width: fit.w, height: fit.h } : undefined}
-            className={`block cursor-zoom-in rounded-lg border border-slate-200 bg-white shadow-md ${fit ? "" : "h-auto w-full"}`} />
+          <div className="relative">
+            <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
+              onClick={openZoom}
+              title="Cliquer pour agrandir"
+              style={fit ? { width: fit.w, height: fit.h } : undefined}
+              className={`block cursor-zoom-in rounded-lg border border-slate-200 bg-white shadow-md ${fit ? "" : "h-auto w-full"}`} />
+            {isCarousel && carNav}
+          </div>
         </div>
 
         <section data-testid="visual-controls" className="mt-4 rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
@@ -364,10 +415,6 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
               <X className="h-5 w-5" />
             </button>
           </div>,
-          document.body
-        )}
-        {showCarousel && createPortal(
-          <CarouselDialog post={localPost} images={images} template={template} onClose={() => setShowCarousel(false)} />,
           document.body
         )}
       </section>
@@ -387,7 +434,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
             onClick={() => setShowConcepts((s) => !s)}
             className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-forsides-slate transition-colors hover:border-forsides-red hover:text-forsides-red"
           >
-            <Columns2 className="h-3.5 w-3.5" /> {formats.length} concepts
+            <Columns2 className="h-3.5 w-3.5" /> {concepts.length} concepts
           </button>
           <div className="flex gap-1 rounded-full bg-slate-100 p-1">
             {formats.map((f) => (
@@ -406,16 +453,15 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 shadow-inner">
+      <div className="relative overflow-hidden rounded-lg border border-slate-200 shadow-inner">
         <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" />
+        {isCarousel && carNav}
       </div>
 
       <div className="mt-4 space-y-3">
         {controls}
         <div className="border-t border-slate-100 pt-3">{actions}</div>
       </div>
-
-      {showCarousel && <CarouselDialog post={localPost} images={images} template={template} onClose={() => setShowCarousel(false)} />}
     </section>
   );
 };
