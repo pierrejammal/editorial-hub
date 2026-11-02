@@ -8,12 +8,12 @@ import {
 
 const CL = {
   fr: {
-    swipe: "Faites défiler", source: "Source :", essential: "L'essentiel", figures: "Les chiffres",
+    swipe: "Faites défiler", source: "Source :", sources: "Sources :", essential: "L'essentiel", figures: "Les chiffres",
     keyFigures: "Les chiffres clés", deadline: "échéance à retenir", analysis: "Décryptage", takeaway: "À retenir",
     ctaQ: "Vous avez trouvé ce décryptage utile ?", cta: "Suivez FORSIDES pour ne rien manquer de l'actualité actuarielle.",
   },
   en: {
-    swipe: "Swipe", source: "Source:", essential: "In a nutshell", figures: "The figures",
+    swipe: "Swipe", source: "Source:", sources: "Sources:", essential: "In a nutshell", figures: "The figures",
     keyFigures: "Key figures", deadline: "key deadline", analysis: "Analysis", takeaway: "Key takeaway",
     ctaQ: "Found this analysis useful?", cta: "Follow FORSIDES for the latest actuarial and insurance news.",
   },
@@ -110,7 +110,7 @@ function coverPage(ctx, d, images, n, total) {
   if (d.content.source) {
     ctx.fillStyle = "#4a3a36";
     ctx.font = "500 30px Outfit";
-    ctx.fillText(`${L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74);
+    ctx.fillText(`${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74);
   }
   swipeHint(ctx);
   pageCounter(ctx, n, total);
@@ -126,7 +126,7 @@ function essentialPage(ctx, d, images, n, total) {
   const figLabel = clean(d.v.key_figure_label);
   // short facts not already shown on the "chiffres" page
   const facts = d.factsFree ? (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3) : [];
-  const src = d.content.source ? `${L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}` : "";
+  const src = d.content.source ? `${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}` : "";
 
   // measure everything at a given summary size, then pick the largest size that fits
   const layout = (sumPx) => {

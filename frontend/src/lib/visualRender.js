@@ -79,12 +79,12 @@ function roundRect(ctx, x, y, w, h, r) {
 // ---------- Language of the visual (French by default, English for "Version anglaise") ----------
 const DICT = {
   fr: {
-    essential: "L'ESSENTIEL", figures: "LES CHIFFRES", atSource: "À LA SOURCE", source: "SOURCE",
+    essential: "L'ESSENTIEL", figures: "LES CHIFFRES", atSource: "À LA SOURCE", source: "SOURCE", sources: "SOURCES",
     deadline: "échéance à retenir", whatChanges: "Ce qui change", whyImportant: "Pourquoi c'est important",
     takeaway: "À retenir", keyPoint: "Point clé", note: "À noter", also: "Et aussi", locale: "fr-FR",
   },
   en: {
-    essential: "IN A NUTSHELL", figures: "KEY FIGURES", atSource: "FROM THE SOURCE", source: "SOURCE",
+    essential: "IN A NUTSHELL", figures: "KEY FIGURES", atSource: "FROM THE SOURCE", source: "SOURCE", sources: "SOURCES",
     deadline: "key deadline", whatChanges: "What changes", whyImportant: "Why it matters",
     takeaway: "Key takeaway", keyPoint: "Key point", note: "Worth noting", also: "Also", locale: "en-GB",
   },
@@ -297,7 +297,9 @@ export function resolveContent(post, title) {
 
   const source = clean(m.source);
   const srcTitle = pick(m.source_title, post.sources?.[0]?.title, m.topic);
-  const auto = { summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: v.hide_date ? "" : clean(m.date_label) };
+  // several sources ("DREES / Légifrance", multi-link analysis) → "Sources" in the plural
+  const multi = Boolean(m.multi_source) || (post.sources || []).length > 1 || /\s[/&+]\s|,|\set\s|\sand\s/i.test(source);
+  const auto = { multi, summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: v.hide_date ? "" : clean(m.date_label) };
 
   // Text the user edited by hand in "Modifier le texte du visuel" always wins over the automatic choice.
   const cu = v.custom || {};
@@ -739,8 +741,9 @@ function drawSourceFooter(ctx, content, top) {
   ctx.fillStyle = DOT;
   ctx.fillRect(PAD, top, VW - PAD * 2, 2);
   ctx.textAlign = "left";
-  drawLabel(ctx, T("source"), PAD, top + 36);
-  const labelW = ctx.measureText(T("source")).width + 40;
+  const lbl = T(content.multi ? "sources" : "source");
+  drawLabel(ctx, lbl, PAD, top + 36);
+  const labelW = ctx.measureText(lbl).width + 40;
   let x = PAD + labelW;
   if (content.source) {
     ctx.fillStyle = BORDEAUX;

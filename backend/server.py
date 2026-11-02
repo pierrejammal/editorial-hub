@@ -1358,7 +1358,10 @@ Ce que tu peux modifier:
 - le template (couleurs hex #RRGGBB: background, accent, titles, secondary, text, lines; bannerShape rect|rounded|pill|underline;
   bulletShape square|circle|dash; ruleStyle bar|thin|none; titleFont Outfit|"Playfair Display"; bannerText; showDate; showSignature; signature)
   → dans "template". Garde des contrastes lisibles (texte foncé sur fond clair ou l'inverse).
-Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique).
+Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique),
+et les libellés fixes du modèle: « Source(s) : », « Faites défiler », « L'essentiel », « Les chiffres », « Décryptage »,
+« À retenir », « Vous avez trouvé ce décryptage utile ? » (« Source » passe AUTOMATIQUEMENT au pluriel « Sources »
+quand le post a plusieurs sources). N'invente JAMAIS un champ qui n'est pas dans la liste ci-dessus.
 Si on te le demande, obtiens l'effet voulu autrement (raccourcir/allonger un texte, ajouter des faits, changer de format)
 et dis-le en une phrase. Sois proactif: interprète la demande de la façon la plus utile, n'en reste pas à « impossible ».
 
@@ -1378,6 +1381,7 @@ Règles:
 - Si la demande est impossible sans inventer (chiffre absent de la source…), ne change rien et explique-le dans reply.
 {style_block(style, None)}
 
+Si "changes" est vide, ta réponse NE DOIT PAS dire que tu as modifié quelque chose.
 Renvoie STRICTEMENT ce JSON:
 {{"reply": "1 à 2 phrases en français : ce que tu as changé (ou pourquoi tu ne peux pas)",
   "changes": {{"caption": "uniquement si modifié", "visual": {{"seulement les champs modifiés": "..."}}, "editorial": {{"seulement les champs modifiés": "..."}}, "template": {{"seulement les champs modifiés": "..."}}}}}}"""
@@ -1423,7 +1427,21 @@ Renvoie STRICTEMENT ce JSON:
     tpl = _clean_template_changes(ch.get("template"))
     if tpl:
         out["template"] = tpl
-    return {"reply": str(data.get("reply") or "C'est fait.").strip()[:600], "changes": out}
+    reply = str(data.get("reply") or "C'est fait.").strip()[:600]
+    if not out:
+        # never let the assistant claim a change that was not applied (invented field, fixed label…)
+        tried = []
+        if isinstance(ch.get("visual"), dict):
+            tried += [f"visual.{k}" for k in ch["visual"] if k not in ASSIST_VISUAL_KEYS]
+        if isinstance(ch.get("editorial"), dict):
+            tried += [f"editorial.{k}" for k in ch["editorial"] if k not in ASSIST_EDITORIAL_KEYS]
+        tried += [k for k in ch if k not in ("caption", "visual", "editorial", "template")]
+        claims = re.search(r"\b(j'ai|c'est fait|modifié|remplacé|ajouté|changé|mis à jour|appliqué)\b", reply, re.I)
+        if tried or (claims and not re.search(r"\b(ne peux|impossible|pas pu|n'ai pas)\b", reply, re.I)):
+            reply = ("Je n'ai rien pu modifier : ce que vous demandez n'est pas un texte du post mais un élément fixe "
+                     "du modèle, ou un réglage qui n'existe pas. Reformulez, ou dites-moi l'effet recherché et je "
+                     "proposerai une autre façon de l'obtenir.")
+    return {"reply": reply, "changes": out}
 
 
 @api_router.post("/jobs/assist")
