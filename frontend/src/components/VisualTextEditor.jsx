@@ -118,18 +118,6 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
         <textarea rows={2} data-testid="visual-edit-source" value={v.source_label ?? ""} placeholder={post.meta?.source || "Nom de la source"}
           onChange={(e) => updateVisual({ source_label: e.target.value })} className={`${inputCls} resize-y`} />
       </div>
-      <div>
-        <Label>Date affichée</Label>
-        <div className="flex items-center gap-3">
-          <input data-testid="visual-edit-date" value={v.date_label ?? ""} placeholder={post.meta?.date_label || "NOVEMBRE 2026"}
-            disabled={Boolean(v.hide_date)}
-            onChange={(e) => updateVisual({ date_label: e.target.value })} className={`${inputCls} disabled:opacity-40`} />
-          <label className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-forsides-ink">
-            <input type="checkbox" data-testid="visual-edit-show-date" checked={!v.hide_date}
-              onChange={(e) => updateVisual({ hide_date: !e.target.checked })} /> Afficher la date
-          </label>
-        </div>
-      </div>
     </div>
     {extraSources.map((src, i) => (
       <div key={i} className="flex items-center gap-2">
