@@ -1225,7 +1225,7 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "data_points", "insight_line", "chart", "recommended_format", "custom",
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
                       "labels", "carousel_labels", "source_label", "date_label",
-                      "text_scale", "title_scale", "page_text_scale", "extra_pages"}
+                      "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks"}
 EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
@@ -1381,6 +1381,11 @@ Ce que tu peux modifier:
 - pages ajoutées au carrousel: visual.extra_pages = liste COMPLÈTE de {{"id": "court", "type": "text"|"figure"|"quote"|"list",
   "title": "titre de page", "text": "texte (list: un élément par ligne; quote: la citation)", "value": "chiffre (figure)",
   "label": "ce que mesure le chiffre (figure) ou auteur (quote)", "after": "auto"|"cover"|"essential"|"data"|"points"|"end"}}.
+- position verticale du contenu (en px, -300 = plus haut, +300 = plus bas): visual.content_offset
+  {{"A"|"B"|"C": n, "k:<page>": n}} (pages du carrousel: "k:cover", "k:essential", "k:data", "k:points", "k:takeaway",
+  "k:extra-<id>"). Renvoie l'objet complet.
+- parties ajoutées DANS une page du carrousel (sous son contenu): visual.page_blocks {{"<page>": [{{"id", "type":
+  "text"|"figure"|"quote"|"list", "title": "sous-titre", "text", "value", "label"}}]}} (max 4 par page, pas sur "cover").
 - un retour à la ligne voulu s'écrit \\n dans le texte; une partie « chiffre clé » dans les points = point avec "value".
 Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique).
 (« Source » passe AUTOMATIQUEMENT au pluriel « Sources » quand le post a plusieurs sources.)
@@ -1444,6 +1449,28 @@ Renvoie STRICTEMENT ce JSON:
             vis["page_text_scale"] = {**((post.get("visual") or {}).get("page_text_scale") or {}), **clean_pts}
         else:
             vis.pop("page_text_scale")
+    if "content_offset" in vis:
+        co = vis["content_offset"]
+        if isinstance(co, dict):
+            clean_co = {}
+            for k, val in co.items():
+                try:
+                    clean_co[str(k)[:40]] = max(-400, min(400, int(float(val))))
+                except (TypeError, ValueError):
+                    pass
+            vis["content_offset"] = {**((post.get("visual") or {}).get("content_offset") or {}), **clean_co}
+        else:
+            vis.pop("content_offset")
+    if "page_blocks" in vis:
+        pb = vis["page_blocks"]
+        if isinstance(pb, dict):
+            vis["page_blocks"] = {**((post.get("visual") or {}).get("page_blocks") or {}), **{
+                str(k)[:40]: [{**{f: str(b.get(f, ""))[:600] for f in EXTRA_PAGE_FIELDS if f != "after"},
+                               "id": str(b.get("id") or uuid.uuid4().hex[:6])[:20]}
+                              for b in lst[:4] if isinstance(b, dict) and b.get("type") in ("text", "figure", "quote", "list")]
+                for k, lst in pb.items() if isinstance(lst, list) and k != "cover"}}
+        else:
+            vis.pop("page_blocks")
     if "extra_pages" in vis:
         ep = vis["extra_pages"]
         if isinstance(ep, list):

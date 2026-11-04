@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { resolveContent, hasChart } from "@/lib/visualRender";
-import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List } from "lucide-react";
+import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown } from "lucide-react";
 
 const inputCls =
   "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20";
@@ -246,6 +246,90 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       <span className="w-11 text-right font-mono text-xs text-forsides-slate">{Math.round((Number(value) || 1) * 100)} %</span>
     </div>
   );
+  // "Position du texte": moves the content up/down (also by dragging on the preview with "Déplacer")
+  const posBar = (key) => {
+    const val = Number((v.content_offset || {})[key]) || 0;
+    const set = (n) => updateVisual({ content_offset: { ...(v.content_offset || {}), [key]: n } });
+    return (
+      <div className="flex items-center gap-3">
+        <span className="inline-flex w-32 shrink-0 items-center gap-1 text-xs font-medium text-forsides-ink">
+          <MoveVertical className="h-3.5 w-3.5" /> Position du texte
+        </span>
+        <input type="range" min={-300} max={300} step={5} value={val} aria-label="Position verticale du texte"
+          data-testid={`visual-pos-${key}`} onChange={(e) => set(Number(e.target.value))} className="flex-1 accent-[#C0453A]" />
+        <span className="w-14 text-right font-mono text-xs text-forsides-slate">{val > 0 ? `↓ ${val}` : val < 0 ? `↑ ${-val}` : "0"}</span>
+        {val !== 0 && (
+          <button type="button" onClick={() => set(0)} title="Remettre à sa place" aria-label="Remettre à sa place"
+            className="text-slate-400 hover:text-forsides-red"><RotateCcw className="h-3.5 w-3.5" /></button>
+        )}
+      </div>
+    );
+  };
+
+  // sections added inside one carousel page (below its content)
+  const blocksEditor = (kind) => {
+    const all = v.page_blocks || {};
+    const list = Array.isArray(all[kind]) ? all[kind] : [];
+    const save = (next) => updateVisual({ page_blocks: { ...all, [kind]: next } });
+    const setB = (i, patch) => save(list.map((b, k) => (k === i ? { ...b, ...patch } : b)));
+    const move = (i, dir) => {
+      const j = i + dir;
+      if (j < 0 || j >= list.length) return;
+      const next = [...list];
+      [next[i], next[j]] = [next[j], next[i]];
+      save(next);
+    };
+    return (
+      <div className="space-y-2 border-t border-slate-100 pt-3" data-testid="visual-page-blocks">
+        {list.map((b, i) => (
+          <div key={b.id || i} className="space-y-1.5 rounded-lg bg-forsides-cream/60 p-2.5">
+            <div className="flex flex-wrap items-center gap-1">
+              {EXTRA_TYPES.map((t) => (
+                <button key={t.type} type="button" onClick={() => setB(i, { type: t.type })}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    b.type === t.type ? "bg-forsides-ink text-white" : "bg-white text-forsides-slate hover:bg-slate-200"}`}>
+                  <t.icon className="h-3 w-3" /> {t.label}
+                </button>
+              ))}
+              <span className="ml-auto flex items-center gap-1">
+                <button type="button" aria-label="Monter" onClick={() => move(i, -1)} className="p-1 text-slate-400 hover:text-forsides-red"><ArrowUp className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label="Descendre" onClick={() => move(i, 1)} className="p-1 text-slate-400 hover:text-forsides-red"><ArrowDown className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label="Supprimer cette partie" onClick={() => save(list.filter((_, k) => k !== i))}
+                  className="p-1 text-slate-400 hover:text-forsides-red"><Trash2 className="h-3.5 w-3.5" /></button>
+              </span>
+            </div>
+            <input value={b.title || ""} placeholder="Sous-titre (facultatif)" onChange={(e) => setB(i, { title: e.target.value })}
+              className={`${inputCls} py-1.5 text-xs font-semibold uppercase`} />
+            {b.type === "figure" && (
+              <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
+                <input value={b.value || ""} placeholder="Chiffre (ex. 19,7 Md€)" onChange={(e) => setB(i, { value: e.target.value })} className={`${inputCls} sm:w-40`} />
+                <input value={b.label || ""} placeholder="Ce qu'il mesure" onChange={(e) => setB(i, { label: e.target.value })} className={inputCls} />
+              </div>
+            )}
+            <textarea rows={b.type === "list" ? 4 : 3} value={b.text || ""} data-testid={`visual-block-text-${i}`}
+              placeholder={b.type === "list" ? "Un élément par ligne" : b.type === "quote" ? "La citation" : b.type === "figure" ? "Commentaire (facultatif)" : "Texte"}
+              onChange={(e) => setB(i, { text: e.target.value })} className={`${inputCls} resize-y`} />
+            {b.type === "quote" && (
+              <input value={b.label || ""} placeholder="Auteur (facultatif)" onChange={(e) => setB(i, { label: e.target.value })} className={inputCls} />
+            )}
+          </div>
+        ))}
+        {list.length < 4 && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-semibold text-forsides-ink">Ajouter une partie sur cette page :</span>
+            {EXTRA_TYPES.map((t) => (
+              <button key={t.type} type="button" data-testid={`visual-add-block-${t.type}`}
+                onClick={() => save([...list, { id: Date.now().toString(36), type: t.type, title: "", text: "", value: "", label: "" }])}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200">
+                <Plus className="h-3 w-3" /><t.icon className="h-3.5 w-3.5" /> {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const pageSize = (kind, label = "Taille du texte") => slider(label, (v.page_text_scale || {})[kind],
     (n) => updateVisual({ page_text_scale: { ...(v.page_text_scale || {}), [kind]: n } }), `visual-size-${kind}`);
 
@@ -400,7 +484,9 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                 ))}
               </div>
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
+              {posBar(`k:${activeKind}`)}
               {extraOf(activeKind) ? extraEditor(extraOf(activeKind)) : carouselPage[activeKind]}
+              {activeKind !== "cover" && blocksEditor(activeKind)}
               {extras.length < 6 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-xs" data-testid="visual-add-page">
                   <span className="font-semibold text-forsides-ink">Ajouter une page après celle-ci :</span>
@@ -419,6 +505,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               <Section>
                 {slider("Taille du titre", v.title_scale, (n) => updateVisual({ title_scale: n }), "visual-size-title")}
                 {slider("Taille du texte", v.text_scale, (n) => updateVisual({ text_scale: n }), "visual-size-text")}
+                {posBar(version === "C" && !hasChart(post) ? "A" : version)}
               </Section>
               <Section>{summaryField}</Section>
               {version === "B" && (

@@ -990,9 +990,15 @@ export function renderVisual(ctx, { post, version, images, template }) {
   const content = resolveContent(post, title);
   const footerTop = VH - 200;
 
-  if (version === "C" && hasChart(post)) renderChart(ctx, { v, title, content, headerBottom, footerTop });
-  else if (version === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
+  // "Position du texte": the content moves, the header, source footer and signature stay in place
+  const fmt = version === "C" && hasChart(post) ? "C" : version === "B" ? "B" : "A";
+  const off = Math.max(-400, Math.min(400, Number((v.content_offset || {})[fmt]) || 0));
+  ctx.save();
+  if (off) ctx.translate(0, off);
+  if (fmt === "C") renderChart(ctx, { v, title, content, headerBottom, footerTop });
+  else if (fmt === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
   else renderAnalysis(ctx, { title, content, headerBottom, footerTop });
+  ctx.restore();
 
   drawSourceFooter(ctx, content, footerTop);
   drawSignature(ctx);

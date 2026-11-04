@@ -23,7 +23,7 @@ const initialFormat = (post) => {
   return f === "B" ? "B" : "A";
 };
 import {
-  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal, Maximize2, X,
+  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal, Maximize2, X, Move,
 } from "lucide-react";
 
 const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, label, template }) => {
@@ -387,6 +387,43 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     </React.Fragment>
   );
 
+  // "Déplacer": drag the text up or down directly on the preview (same setting as "Position du texte")
+  const [moveMode, setMoveMode] = useState(false);
+  const dragRef = useRef(null);
+  const posKey = isCarousel ? `k:${carKinds[carPage] || "cover"}` : (version === "C" && !chartOk ? "A" : version);
+  const dragProps = moveMode ? {
+    onPointerDown: (e) => {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      dragRef.current = { y: e.clientY, base: Number((v.content_offset || {})[posKey]) || 0, h: e.currentTarget.getBoundingClientRect().height };
+    },
+    onPointerMove: (e) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const off = Math.max(-400, Math.min(400, Math.round((d.base + ((e.clientY - d.y) * VH) / d.h) / 5) * 5));
+      if (off !== d.last) {
+        d.last = off;
+        updateVisual({ content_offset: { ...(v.content_offset || {}), [posKey]: off } });
+      }
+    },
+    onPointerUp: () => { dragRef.current = null; },
+    onPointerCancel: () => { dragRef.current = null; },
+    style: { cursor: "ns-resize", touchAction: "none" },
+  } : {};
+  const moveBtn = (
+    <button type="button" data-testid="visual-move" onClick={() => setMoveMode((m) => !m)}
+      title="Déplacer le texte : glissez vers le haut ou le bas sur l'aperçu"
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+        moveMode ? "border-forsides-red bg-forsides-red text-white" : "border-slate-200 bg-white text-forsides-slate hover:border-forsides-red hover:text-forsides-red"}`}>
+      <Move className="h-3.5 w-3.5" /> Déplacer
+    </button>
+  );
+  const moveHint = moveMode && (
+    <span className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-forsides-red px-3 py-1 text-xs font-semibold text-white shadow">
+      ↕ Glissez le texte vers le haut ou le bas
+    </span>
+  );
+
   const openZoom = () => {
     try { setZoom(canvasRef.current.toDataURL("image/png")); } catch { /* protected logo: no zoom */ }
   };
@@ -423,6 +460,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
             <button data-testid="concepts-toggle" onClick={() => setShowConcepts((v2) => !v2)} title="Comparer les concepts (dans Réglages du visuel)" className={iconBtn}>
               <Columns2 className="h-3.5 w-3.5" />
             </button>
+            {moveBtn}
             <button data-testid="visual-zoom" onClick={openZoom} title="Agrandir" className={iconBtn}>
               <Maximize2 className="h-3.5 w-3.5" />
             </button>
@@ -443,12 +481,14 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         <div className="flex justify-center">
           <div className="relative">
             <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
-              onClick={openZoom}
-              title="Cliquer pour agrandir"
-              style={fit ? { width: fit.w, height: fit.h } : undefined}
-              className={`block cursor-zoom-in rounded-lg border border-slate-200 bg-white shadow-md ${fit ? "" : "h-auto w-full"}`} />
+              onClick={moveMode ? undefined : openZoom}
+              title={moveMode ? "Glissez pour déplacer le texte" : "Cliquer pour agrandir"}
+              {...dragProps}
+              style={{ ...(fit ? { width: fit.w, height: fit.h } : {}), ...(dragProps.style || {}) }}
+              className={`block cursor-zoom-in rounded-lg border bg-white shadow-md ${moveMode ? "border-forsides-red ring-2 ring-forsides-red/40" : "border-slate-200"} ${fit ? "" : "h-auto w-full"}`} />
             {isCarousel && carNav}
             {aiBadge}
+            {moveHint}
           </div>
         </div>
 
@@ -487,6 +527,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
           >
             <Columns2 className="h-3.5 w-3.5" /> {concepts.length} concepts
           </button>
+          {moveBtn}
           <div className="flex gap-1 rounded-full bg-slate-100 p-1">
             {formats.map((f) => (
               <button
@@ -505,9 +546,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       </div>
 
       <div className="relative overflow-hidden rounded-lg border border-slate-200 shadow-inner">
-        <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" />
+        <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" {...dragProps} />
         {isCarousel && carNav}
         {aiBadge}
+        {moveHint}
       </div>
 
       <div className="mt-4 space-y-3">
