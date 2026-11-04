@@ -64,7 +64,22 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     </div>
   );
   const kLabel = (key, label, def) => labelField("carousel_labels", key, label, def);
+  // sources: the main one + any added by hand (shown "Sources : A / B / C")
+  const extraSources = Array.isArray(v.extra_sources) ? v.extra_sources : [];
+  const setExtraSources = (list) => updateVisual({ extra_sources: list });
+  const sourceToggle = (key, def) => {
+    const o = (v.page_source || {})[key];
+    const on = typeof o === "boolean" ? o : def;
+    return (
+      <label className="inline-flex items-center gap-2 text-xs font-medium text-forsides-ink">
+        <input type="checkbox" data-testid={`visual-show-source-${key}`} checked={on}
+          onChange={(e) => updateVisual({ page_source: { ...(v.page_source || {}), [key]: e.target.checked } })} />
+        Afficher la source sur cette page
+      </label>
+    );
+  };
   const sourceFields = (
+    <div className="space-y-2">
     <div className="grid gap-2 sm:grid-cols-2">
       <div>
         <Label>Source affichée</Label>
@@ -76,6 +91,21 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
         <input data-testid="visual-edit-date" value={v.date_label ?? ""} placeholder={post.meta?.date_label || "NOVEMBRE 2026"}
           onChange={(e) => updateVisual({ date_label: e.target.value })} className={inputCls} />
       </div>
+    </div>
+    {extraSources.map((src, i) => (
+      <div key={i} className="flex items-center gap-2">
+        <input data-testid={`visual-extra-source-${i}`} value={src} placeholder="Autre source (ex. Légifrance)"
+          onChange={(e) => setExtraSources(extraSources.map((x, k) => (k === i ? e.target.value : x)))} className={inputCls} />
+        <button type="button" aria-label="Retirer cette source" onClick={() => setExtraSources(extraSources.filter((_, k) => k !== i))}
+          className="rounded-lg px-2 text-slate-400 hover:text-forsides-red"><Trash2 className="h-4 w-4" /></button>
+      </div>
+    ))}
+    {extraSources.length < 5 && (
+      <button type="button" data-testid="visual-add-source" onClick={() => setExtraSources([...extraSources, ""])}
+        className="inline-flex items-center gap-1 text-xs font-medium text-forsides-slate hover:text-forsides-red">
+        <Plus className="h-3.5 w-3.5" /> Ajouter une source
+      </button>
+    )}
     </div>
   );
 
@@ -484,6 +514,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               </div>
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
               {posBar(`k:${activeKind}`)}
+              {sourceToggle(activeKind, activeKind === "cover" || activeKind === "essential")}
               {extraOf(activeKind) ? extraEditor(extraOf(activeKind)) : carouselPage[activeKind]}
               {activeKind !== "cover" && blocksEditor(activeKind)}
               {extras.length < 6 && (
@@ -505,6 +536,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                 {slider("Taille du titre", v.title_scale, (n) => updateVisual({ title_scale: n }), "visual-size-title")}
                 {slider("Taille du texte", v.text_scale, (n) => updateVisual({ text_scale: n }), "visual-size-text")}
                 {posBar(version === "C" && !hasChart(post) ? "A" : version)}
+                {sourceToggle(version === "C" && !hasChart(post) ? "A" : version, true)}
               </Section>
               <Section>{summaryField}</Section>
               {version === "B" && (

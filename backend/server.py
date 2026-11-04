@@ -1225,7 +1225,8 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "data_points", "insight_line", "chart", "recommended_format", "custom",
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
                       "labels", "carousel_labels", "source_label", "date_label",
-                      "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks"}
+                      "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks",
+                      "extra_sources", "page_source"}
 EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
@@ -1374,7 +1375,9 @@ Ce que tu peux modifier:
   "analysis": "Décryptage", "takeaway": "À retenir", "swipe": "Faites défiler", "source": "Source :", "sources": "Sources :",
   "deadline": "échéance à retenir"}}; formats Analyse/Data/Graphique → visual.labels {{"essential", "figures", "atSource",
   "source", "sources", "deadline"}}. Renvoie l'objet COMPLET (anciennes valeurs + nouvelles);
-- la source et la date affichées: visual.source_label, visual.date_label.
+- la source et la date affichées: visual.source_label, visual.date_label; sources supplémentaires:
+  visual.extra_sources ["Légifrance", ...] (liste complète); afficher/masquer la source par page:
+  visual.page_source {{"A"|"B"|"C"|"cover"|"essential"|"data"|"points"|"takeaway"|"extra-<id>": true/false}}.
 - tailles de texte (0.7 à 1.4, défaut 1): visual.text_scale et visual.title_scale (formats A/B/C);
   carrousel, par page: visual.page_text_scale {{"cover": titre de couverture, "essential", "data", "points", "takeaway",
   "extra-<id>"}}. Renvoie l'objet complet.
@@ -1449,6 +1452,18 @@ Renvoie STRICTEMENT ce JSON:
             vis["page_text_scale"] = {**((post.get("visual") or {}).get("page_text_scale") or {}), **clean_pts}
         else:
             vis.pop("page_text_scale")
+    if "extra_sources" in vis:
+        es = vis["extra_sources"]
+        vis["extra_sources"] = [str(x)[:120] for x in es[:5] if isinstance(x, str)] if isinstance(es, list) else None
+        if vis["extra_sources"] is None:
+            vis.pop("extra_sources")
+    if "page_source" in vis:
+        ps = vis["page_source"]
+        if isinstance(ps, dict):
+            vis["page_source"] = {**((post.get("visual") or {}).get("page_source") or {}),
+                                  **{str(k)[:40]: v for k, v in ps.items() if isinstance(v, bool)}}
+        else:
+            vis.pop("page_source")
     if "content_offset" in vis:
         co = vis["content_offset"]
         if isinstance(co, dict):

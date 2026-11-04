@@ -383,7 +383,9 @@ export function resolveContent(post, title) {
     points = rest.filter((x) => x.length > 25).map((text, i) => ({ label: [T("note", lg), T("also", lg), T("takeaway", lg)][i], text }));
   }
 
-  const source = clean(v.source_label) || clean(m.source); // "Source affichée" edited by hand wins
+  // "Source affichée" edited by hand wins; sources added by hand are listed after it
+  const extraSrc = (Array.isArray(v.extra_sources) ? v.extra_sources : []).map(clean).filter(Boolean);
+  const source = [clean(v.source_label) || clean(m.source), ...extraSrc].filter(Boolean).join(" / ");
   const srcTitle = pick(m.source_title, post.sources?.[0]?.title, m.topic);
   // several sources ("DREES / Légifrance", multi-link analysis) → "Sources" in the plural
   const multi = Boolean(m.multi_source) || (post.sources || []).length > 1 || /\s[/&+]\s|,|\set\s|\sand\s/i.test(source);
@@ -1010,7 +1012,7 @@ export function renderVisual(ctx, { post, version, images, template }) {
   else renderAnalysis(ctx, { title, content, headerBottom, footerTop });
   ctx.restore();
 
-  drawSourceFooter(ctx, content, footerTop);
+  if ((v.page_source || {})[fmt] !== false) drawSourceFooter(ctx, content, footerTop); // "Afficher la source"
   drawSignature(ctx);
 }
 

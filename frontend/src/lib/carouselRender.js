@@ -93,6 +93,24 @@ function drawBlock(ctx, b, y, k, draw) {
 }
 const BLOCK_GAP = 34;
 // room taken at the bottom of the page by its added sections (the page content is laid out above)
+// "Afficher la source sur cette page": shown by default on the cover and L'essentiel only
+const showSource = (d, kind) => {
+  const o = (d.v.page_source || {})[kind];
+  return typeof o === "boolean" ? o : kind === "cover" || kind === "essential";
+};
+const sourceLine = (d) => (d.content.source
+  ? `${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}` : "");
+// small source line at the bottom of the other pages (when switched on)
+function footSource(ctx, d, kind) {
+  if (kind === "cover" || kind === "essential" || !showSource(d, kind)) return;
+  const line = sourceLine(d);
+  if (!line) return;
+  ctx.fillStyle = "#4a3a36";
+  ctx.font = "500 24px Outfit";
+  ctx.textAlign = "left";
+  ctx.fillText(ellipsize(ctx, line, MAXW), PAD, kind === "takeaway" ? VH - 150 : VH - 125);
+}
+
 function blocksReserve(ctx, d) {
   const blocks = blocksOf(d);
   if (!blocks.length) return 0;
@@ -207,7 +225,7 @@ function coverPage(ctx, d, images, n, total) {
   const y0 = area.top + Math.max(0, ((area.bottom - area.top) - lines * lh) / 2) + px;
   const yEnd = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, maxLines);
   drawRule(ctx, yEnd + 10);
-  if (d.content.source) {
+  if (d.content.source && showSource(d, "cover")) {
     ctx.fillStyle = "#4a3a36";
     ctx.font = "500 30px Outfit";
     drawParagraph(ctx, `${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74, MAXW, 40, false, 2);
@@ -229,7 +247,7 @@ function essentialPage(ctx, d, images, n, total) {
   const figLabel = clean(d.v.key_figure_label);
   // short facts not already shown on the "chiffres" page
   const facts = d.factsFree ? (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3) : [];
-  const src = d.content.source ? `${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}` : "";
+  const src = showSource(d, "essential") ? sourceLine(d) : "";
 
   // measure everything at a given summary size, then pick the largest size that fits
   const layout = (sumPx) => {
@@ -605,7 +623,9 @@ export function planCarousel(post) {
     }
     pages.splice(at, 0, page);
   });
-  return pages.slice(0, 12);
+  const out = pages.slice(0, 12);
+  out.data = d; // shared page data (used for the per-page source line)
+  return out;
 }
 
 const PAGE_LABELS = { cover: "Couverture", essential: "L'essentiel", data: "Les chiffres", points: "Décryptage", takeaway: "À retenir" };
@@ -627,6 +647,7 @@ export function renderCarousel(post, images, makeCanvas, template) {
   setRenderLabels(post.visual?.labels);
   setRenderLang(lang);
   const plan = planCarousel(post);
+  const d0 = plan.data;
   return plan.map((draw, i) => {
     const c = makeCanvas(VW, VH);
     applyTemplate(resolveTemplate(full, carouselScopes(i)));
@@ -635,6 +656,7 @@ export function renderCarousel(post, images, makeCanvas, template) {
     const cx = c.getContext("2d");
     draw(cx, images, i + 1, plan.length);
     endShift(cx);
+    footSource(cx, d0, draw.kind);
     try { c.pageKind = draw.kind; } catch { /* read-only canvas object */ }
     return c;
   });
