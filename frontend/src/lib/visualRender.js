@@ -148,7 +148,17 @@ const DICT = {
 let LANG = "fr";
 export const langOf = (post) => (post?.meta?.lang === "en" ? "en" : "fr");
 export const setRenderLang = (lang) => { LANG = lang === "en" ? "en" : "fr"; };
-export const T = (key, lang = LANG) => (DICT[lang] || DICT.fr)[key];
+// Headings typed by the user for this post (visual.labels) replace the default ones
+// ("L'ESSENTIEL", "LES CHIFFRES", "SOURCE"…). Kept in capitals where the design uses capitals.
+let LABELS = {};
+const OVERRIDABLE = new Set(["essential", "figures", "atSource", "source", "sources", "deadline"]);
+export const setRenderLabels = (o) => { LABELS = o && typeof o === "object" ? o : {}; };
+export const T = (key, lang = LANG) => {
+  const def = (DICT[lang] || DICT.fr)[key];
+  const o = OVERRIDABLE.has(key) ? LABELS[key] : null;
+  if (typeof o === "string" && o.trim()) return def && def === def.toUpperCase() ? o.trim().toUpperCase() : o.trim();
+  return def;
+};
 
 export const loadImage = (src) =>
   new Promise((resolve) => {
@@ -351,11 +361,11 @@ export function resolveContent(post, title) {
     points = rest.filter((x) => x.length > 25).map((text, i) => ({ label: [T("note", lg), T("also", lg), T("takeaway", lg)][i], text }));
   }
 
-  const source = clean(m.source);
+  const source = clean(v.source_label) || clean(m.source); // "Source affichée" edited by hand wins
   const srcTitle = pick(m.source_title, post.sources?.[0]?.title, m.topic);
   // several sources ("DREES / Légifrance", multi-link analysis) → "Sources" in the plural
   const multi = Boolean(m.multi_source) || (post.sources || []).length > 1 || /\s[/&+]\s|,|\set\s|\sand\s/i.test(source);
-  const auto = { multi, summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: v.hide_date ? "" : clean(m.date_label) };
+  const auto = { multi, summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: v.hide_date ? "" : clean(v.date_label) || clean(m.date_label) };
 
   // Text the user edited by hand in "Modifier le texte du visuel" always wins over the automatic choice.
   const cu = v.custom || {};
@@ -867,7 +877,7 @@ export function drawHeader(ctx, post, images) {
     ctx.fillStyle = INK;
     ctx.font = "500 32px Outfit";
     ctx.textAlign = label ? "right" : "left";
-    ctx.fillText((post.meta?.date_label || "").toUpperCase(), label ? Math.max(bannerRight, PAD + 260) : PAD, bannerBottom + 40);
+    ctx.fillText((post.visual?.date_label || post.meta?.date_label || "").toUpperCase(), label ? Math.max(bannerRight, PAD + 260) : PAD, bannerBottom + 40);
     ctx.textAlign = "left";
   }
 
@@ -941,6 +951,7 @@ export function renderVisual(ctx, { post, version, images, template }) {
   const v = post.visual || {};
   const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
   setRenderLang(langOf(post));
+  setRenderLabels(v.labels);
   const headerBottom = drawHeader(ctx, post, images);
   const content = resolveContent(post, title);
   const footerTop = VH - 200;

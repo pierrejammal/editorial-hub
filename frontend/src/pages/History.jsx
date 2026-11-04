@@ -24,7 +24,7 @@ const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0
 
 const History = () => {
   const nav = useNavigate();
-  const { setPost } = useStudio();
+  const { setPost, setCompose } = useStudio();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -65,6 +65,12 @@ const History = () => {
   const open = async (id) => {
     try {
       const full = await getPost(id);
+      if (full.origin === "compose") {
+        // a post written in the Éditeur libre reopens there, with its text, visual and conversation
+        setCompose({ text: full.caption || "", post: { ...full, _aiDone: true, _lastAuto: full.visual?.title_short || "" } });
+        nav("/compose");
+        return;
+      }
       setPost(full);
       nav("/studio");
     } catch (e) {

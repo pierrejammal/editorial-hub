@@ -3,7 +3,7 @@ import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
   clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
-  applyTemplate, currentTemplate, tplScale, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet,
+  applyTemplate, currentTemplate, tplScale, setRenderLabels, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet,
 } from "@/lib/visualRender";
 
 const CL = {
@@ -389,7 +389,13 @@ export function renderCarousel(post, images, makeCanvas, template) {
   // or the inner pages their own ones on top
   const full = template !== undefined ? template : currentTemplate();
   const lang = langOf(post);
-  L = CL[lang];
+  // page headings and fixed sentences typed by the user for this post replace the default ones
+  const ovr = post.visual?.carousel_labels;
+  L = { ...CL[lang] };
+  if (ovr && typeof ovr === "object") {
+    Object.entries(ovr).forEach(([k, val]) => { if (k in L && typeof val === "string" && val.trim()) L[k] = val.trim(); });
+  }
+  setRenderLabels(post.visual?.labels);
   setRenderLang(lang);
   const plan = planCarousel(post);
   return plan.map((draw, i) => {

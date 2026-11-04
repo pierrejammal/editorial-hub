@@ -1223,7 +1223,11 @@ class AssistReq(BaseModel):
 
 ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure_label", "important_date",
                       "data_points", "insight_line", "chart", "recommended_format", "custom",
-                      "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text"}
+                      "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
+                      "labels", "carousel_labels", "source_label", "date_label"}
+ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
+ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
+                              "analysis", "takeaway"}
 ASSIST_TEMPLATE_COLORS = {"background", "accent", "titles", "secondary", "text", "lines"}
 ASSIST_TEMPLATE_CHOICES = {"bannerShape": {"rect", "rounded", "pill", "underline"},
                            "bulletShape": {"square", "circle", "dash"},
@@ -1363,10 +1367,15 @@ Ce que tu peux modifier:
 - le template (couleurs hex #RRGGBB: background, accent, titles, secondary, text, lines; bannerShape rect|rounded|pill|underline;
   bulletShape square|circle|dash; ruleStyle bar|thin|none; titleFont Outfit|"Playfair Display"; bannerText; showDate; showSignature; signature)
   → dans "template". Garde des contrastes lisibles (texte foncé sur fond clair ou l'inverse).
-Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique),
-et les libellés fixes du modèle: « Source(s) : », « Faites défiler », « L'essentiel », « Les chiffres », « Décryptage »,
-« À retenir », « Vous avez trouvé ce décryptage utile ? » (« Source » passe AUTOMATIQUEMENT au pluriel « Sources »
-quand le post a plusieurs sources). N'invente JAMAIS un champ qui n'est pas dans la liste ci-dessus.
+- les titres de rubrique / de page, pour CE post (chaîne vide = texte d'origine):
+  carrousel → visual.carousel_labels {{"essential": "L'essentiel", "figures": "Les chiffres", "keyFigures": "Les chiffres clés",
+  "analysis": "Décryptage", "takeaway": "À retenir", "swipe": "Faites défiler", "source": "Source :", "sources": "Sources :",
+  "deadline": "échéance à retenir"}}; formats Analyse/Data/Graphique → visual.labels {{"essential", "figures", "atSource",
+  "source", "sources", "deadline"}}. Renvoie l'objet COMPLET (anciennes valeurs + nouvelles);
+- la source et la date affichées: visual.source_label, visual.date_label.
+Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique).
+(« Source » passe AUTOMATIQUEMENT au pluriel « Sources » quand le post a plusieurs sources.)
+N'invente JAMAIS un champ qui n'est pas dans la liste ci-dessus.
 Si on te le demande, obtiens l'effet voulu autrement (raccourcir/allonger un texte, ajouter des faits, changer de format)
 et dis-le en une phrase. Sois proactif: interprète la demande de la façon la plus utile, n'en reste pas à « impossible ».
 
@@ -1400,6 +1409,17 @@ Renvoie STRICTEMENT ce JSON:
     vis = {k: v for k, v in (ch.get("visual") or {}).items() if k in ASSIST_VISUAL_KEYS} if isinstance(ch.get("visual"), dict) else {}
     if vis.get("recommended_format") not in (None, "A", "B", "C", "K"):
         vis.pop("recommended_format")
+    for key, allowed in (("labels", ASSIST_LABEL_KEYS), ("carousel_labels", ASSIST_CAROUSEL_LABEL_KEYS)):
+        if key in vis:
+            if isinstance(vis[key], dict):
+                old = (post.get("visual") or {}).get(key) or {}
+                vis[key] = {**(old if isinstance(old, dict) else {}),
+                            **{k: str(val)[:60] for k, val in vis[key].items() if k in allowed and isinstance(val, str)}}
+            else:
+                vis.pop(key)
+    for key in ("source_label", "date_label"):
+        if key in vis and not isinstance(vis[key], str):
+            vis.pop(key)
     for flag in ("hide_source_logo", "hide_date"):
         if flag in vis and not isinstance(vis[flag], bool):
             vis.pop(flag)

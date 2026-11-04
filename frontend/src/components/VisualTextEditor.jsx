@@ -43,6 +43,33 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   const setItem = (i, patch) => setChart({ items: chart.items.map((it, k) => (k === i ? { ...it, ...patch } : it)) });
   const dataPoints = v.data_points || [];
 
+  // ---------- headings & fixed texts (empty = default, shown as placeholder) ----------
+  const fr = post.meta?.lang !== "en";
+  const multi = shown.multi;
+  const labelField = (map, key, label, placeholder, opts = {}) => (
+    <div key={`${map}.${key}`}>
+      <Label>{label}</Label>
+      <input data-testid={`visual-edit-${map}-${key}`} value={(v[map] || {})[key] ?? ""} placeholder={placeholder}
+        maxLength={opts.max || 60}
+        onChange={(e) => updateVisual({ [map]: { ...(v[map] || {}), [key]: e.target.value } })} className={inputCls} />
+    </div>
+  );
+  const kLabel = (key, label, def) => labelField("carousel_labels", key, label, def);
+  const sourceFields = (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div>
+        <Label>Source affichée</Label>
+        <input data-testid="visual-edit-source" value={v.source_label ?? ""} placeholder={post.meta?.source || "Nom de la source"}
+          onChange={(e) => updateVisual({ source_label: e.target.value })} className={inputCls} />
+      </div>
+      <div>
+        <Label>Date affichée</Label>
+        <input data-testid="visual-edit-date" value={v.date_label ?? ""} placeholder={post.meta?.date_label || "NOVEMBRE 2026"}
+          onChange={(e) => updateVisual({ date_label: e.target.value })} className={inputCls} />
+      </div>
+    </div>
+  );
+
   // ---------- blocks ----------
   const titleField = (
     <div>
@@ -197,9 +224,19 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   };
   const hasDataPage = carKinds.includes("data");
   const carouselPage = {
-    cover: <Section>{titleField}</Section>,
+    cover: (
+      <Section>
+        {titleField}
+        {sourceFields}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {multi ? kLabel("sources", "Libellé « Sources : »", fr ? "Sources :" : "Sources:") : kLabel("source", "Libellé « Source : »", fr ? "Source :" : "Source:")}
+          {kLabel("swipe", "Texte « Faites défiler »", fr ? "Faites défiler" : "Swipe")}
+        </div>
+      </Section>
+    ),
     essential: (
       <Section>
+        {kLabel("essential", "Titre de la page", fr ? "L'essentiel" : "In a nutshell")}
         {summaryField}
         {keyFigure}
         {!hasDataPage && factsField("Faits clés de la page (une ligne par fait)")}
@@ -207,12 +244,30 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     ),
     data: (
       <Section>
-        {chartBlock || dateField}
+        {hasChart(post) ? kLabel("figures", "Titre de la page", fr ? "Les chiffres" : "The figures")
+          : kLabel("keyFigures", "Titre de la page", fr ? "Les chiffres clés" : "Key figures")}
+        {chartBlock || (
+          <>
+            {dateField}
+            {kLabel("deadline", "Texte sous l'échéance", fr ? "échéance à retenir" : "key deadline")}
+          </>
+        )}
         {factsField()}
       </Section>
     ),
-    points: <Section>{pointsBlock((p) => !TAKEAWAY_RE.test(p.label || ""))}</Section>,
-    takeaway: <Section>{takeawayBlock}</Section>,
+    points: (
+      <Section>
+        {kLabel("analysis", "Titre de la page (quand les points sont regroupés)", fr ? "Décryptage" : "Analysis")}
+        <p className="text-xs text-slate-500">Quand chaque point a sa propre page, son libellé sert de titre de page.</p>
+        {pointsBlock((p) => !TAKEAWAY_RE.test(p.label || ""))}
+      </Section>
+    ),
+    takeaway: (
+      <Section>
+        {kLabel("takeaway", "Titre de la page", fr ? "À retenir" : "Key takeaway")}
+        {takeawayBlock}
+      </Section>
+    ),
   };
 
   return (
@@ -227,7 +282,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
         <div data-testid="visual-text-editor" className="space-y-3 px-3 pb-4">
           {isK ? (
             <>
-              <p className="text-xs text-slate-500">Carrousel : choisissez la page à modifier, l'aperçu l'affiche.</p>
+              <p className="text-xs text-slate-500">Carrousel : choisissez la page à modifier, l'aperçu l'affiche. Tout ce qui est écrit sur la page se modifie ici ; un champ vide garde le texte d'origine (en grisé).</p>
               <div className="flex flex-wrap gap-1.5" data-testid="visual-edit-pages">
                 {tabs.map((k) => (
                   <button key={k} type="button" data-testid={`visual-edit-page-${k}`} onClick={() => goTab(k)}
@@ -241,7 +296,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
             </>
           ) : (
             <>
-              <p className="text-xs text-slate-500">{FORMAT_HINT[version]} Les changements s'affichent tout de suite.</p>
+              <p className="text-xs text-slate-500">{FORMAT_HINT[version]} Les changements s'affichent tout de suite. Un champ vide garde le texte d'origine (affiché en grisé).</p>
               <Section>{summaryField}</Section>
               {version === "B" && (
                 <Section title="Chiffres">
@@ -252,6 +307,16 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               )}
               {version === "C" && chartBlock && <Section title="Graphique">{chartBlock}</Section>}
               {version !== "C" && <Section title="Points d'analyse">{pointsBlock(() => true, { addLabel: "À retenir" })}</Section>}
+              <Section title="Titres des rubriques, source et date">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {labelField("labels", "essential", "Rubrique « L'essentiel »", fr ? "L'ESSENTIEL" : "IN A NUTSHELL")}
+                  {version === "B" && labelField("labels", "figures", "Rubrique « Les chiffres »", fr ? "LES CHIFFRES" : "KEY FIGURES")}
+                  {version === "B" && labelField("labels", "atSource", "Rubrique « À la source »", fr ? "À LA SOURCE" : "FROM THE SOURCE")}
+                  {version === "B" && labelField("labels", "deadline", "Texte sous l'échéance", fr ? "échéance à retenir" : "key deadline")}
+                  {multi ? labelField("labels", "sources", "Rubrique « Sources »", "SOURCES") : labelField("labels", "source", "Rubrique « Source »", "SOURCE")}
+                </div>
+                {sourceFields}
+              </Section>
             </>
           )}
 

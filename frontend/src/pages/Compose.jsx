@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useStudio } from "@/context/StudioContext";
 import { toast } from "sonner";
 import { BrandHeader } from "@/components/BrandHeader";
 import { VisualPreview } from "@/components/VisualPreview";
 import { PostActions } from "@/components/PostActions";
 import { AssistantPanel } from "@/components/AssistantPanel";
-import { composeFromText } from "@/lib/api";
-import { Sparkles, Loader2, PenLine } from "lucide-react";
+import { composeFromText, savePost } from "@/lib/api";
+import { buildSavePayload } from "@/lib/postPayload";
+import { Sparkles, Loader2, PenLine, Check, CloudOff } from "lucide-react";
 
 const MONTHS = ["JANVIER", "FÉVRIER", "MARS", "AVRIL", "MAI", "JUIN", "JUILLET",
   "AOÛT", "SEPTEMBRE", "OCTOBRE", "NOVEMBRE", "DÉCEMBRE"];
@@ -31,6 +32,33 @@ const Compose = () => {
 
   // keep the text and visual when leaving the page (restored on return)
   useEffect(() => { setCompose({ text, post }); }, [text, post]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Autosave in "Mes posts": as soon as there is a real text, every change is written 1.5 s after the
+  // last edit, so the work is never lost (even after leaving, closing the tab or changing device).
+  const [saveState, setSaveState] = useState(post.id ? "saved" : "idle"); // idle | pending | saved | error
+  const idRef = useRef(post.id || null);
+  const thumbRef = useRef(thumb);
+  thumbRef.current = thumb;
+  useEffect(() => { idRef.current = post.id || null; }, [post.id]);
+  useEffect(() => {
+    if (text.trim().length < 30) return undefined;
+    setSaveState("pending");
+    const t = setTimeout(async () => {
+      try {
+        const payload = buildSavePayload({ ...post, id: idRef.current, caption: text, source_text: post.source_text || text },
+          { thumb: thumbRef.current, origin: "compose", scheduled_at: post.scheduled_at });
+        const { id } = await savePost(payload);
+        if (!idRef.current) {
+          idRef.current = id;
+          setPost((p) => ({ ...p, id }));
+        }
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [text, post.visual, post.editorial, post.meta, post.chat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onText = (val) => {
     setText(val);
@@ -91,7 +119,7 @@ const Compose = () => {
             </h1>
             <p className="mt-3 max-w-2xl text-forsides-slate">
               Collez votre texte LinkedIn à gauche, le visuel FORSIDES se compose en direct à droite.
-              Optimisez le titre et le format avec l'IA, puis exportez le post complet.
+              Tout est enregistré automatiquement dans Mes posts : vous pouvez partir et reprendre plus tard.
             </p>
           </div>
           <PostActions
@@ -109,6 +137,11 @@ const Compose = () => {
                 Votre texte LinkedIn
               </label>
               <span className="flex items-center gap-3 font-mono text-xs text-slate-400">
+                <span data-testid="compose-autosave" className="inline-flex items-center gap-1 font-sans">
+                  {saveState === "pending" && <><Loader2 className="h-3 w-3 animate-spin" /> Enregistrement…</>}
+                  {saveState === "saved" && <><Check className="h-3 w-3 text-emerald-600" /> Enregistré dans Mes posts</>}
+                  {saveState === "error" && <><CloudOff className="h-3 w-3 text-forsides-red" /> Non enregistré</>}
+                </span>
                 {text.length} car.
                 {text && (
                   <button
@@ -117,6 +150,8 @@ const Compose = () => {
                     onClick={() => {
                       if (!window.confirm("Effacer ce texte et repartir de zéro ?")) return;
                       setText("");
+                      idRef.current = null; // the next text is a new post (the previous one stays in Mes posts)
+                      setSaveState("idle");
                       setPost({ meta: { date_label: dateLabel(), source: "" }, editorial: {},
                         visual: { recommended_format: "A", title_short: "" }, caption: "", _lastAuto: "" });
                     }}
