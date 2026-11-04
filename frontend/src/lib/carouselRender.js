@@ -23,6 +23,12 @@ const TAKEAWAY_RE = /retenir|takeaway/i;
 
 const MAXW = VW - PAD * 2;
 
+// "Taille du texte" of one page (visual.page_text_scale[kind]), 0.7 – 1.4
+const pageScale = (d, kind) => {
+  const n = Number((d.v.page_text_scale || {})[kind]);
+  return Number.isFinite(n) && n > 0 ? Math.max(0.7, Math.min(1.4, n)) : 1;
+};
+
 // Largest font (px) at which `text` fits inside maxW × availH, then the text actually shown
 // (whole sentences only).
 function fitBlock(ctx, text, weight, size, minSize, availH, lineRatio = 1.38, maxW = MAXW) {
@@ -88,7 +94,7 @@ function coverPage(ctx, d, images, n, total) {
   const top = drawHeader(ctx, d.post, images);
   const area = { top: Math.max(top + 140, 360), bottom: VH - 360 };
   ctx.fillStyle = BORDEAUX;
-  let px = 84;
+  let px = Math.round(84 * pageScale(d, "cover"));
   const fam = titleFontFamily();
   ctx.font = `800 ${px}px ${fam}`;
   while (px > 46 && wrapWords(ctx, d.title, MAXW).length * px * 1.18 > area.bottom - area.top) {
@@ -111,6 +117,7 @@ function coverPage(ctx, d, images, n, total) {
 
 // Page 2: key figure + summary + a few facts, sized up and centred so the page is never half empty.
 function essentialPage(ctx, d, images, n, total) {
+  const k = pageScale(d, "essential");
   const top = miniHeader(ctx, images, n, total);
   bigLabel(ctx, L.essential, top + 90);
   const areaTop = top + 150;
@@ -126,8 +133,8 @@ function essentialPage(ctx, d, images, n, total) {
     let h = 0;
     const parts = [];
     if (fig) {
-      ctx.font = "190px Anton";
-      const px = fitFontSize(ctx, fig, "Anton", 190, MAXW, 80);
+      ctx.font = `${Math.round(190 * k)}px Anton`;
+      const px = fitFontSize(ctx, fig, "Anton", Math.round(190 * k), MAXW, 80);
       parts.push({ k: "fig", px, h: px });
       h += px;
       if (figLabel) {
@@ -154,7 +161,7 @@ function essentialPage(ctx, d, images, n, total) {
     if (src) { parts.push({ k: "src", h: 90 }); h += 90; }
     return { h, parts };
   };
-  let sumPx = 64;
+  let sumPx = Math.round(64 * k);
   let lay = layout(sumPx);
   while (sumPx > 30 && lay.h > areaBottom - areaTop) { sumPx -= 2; lay = layout(sumPx); }
 
@@ -197,6 +204,7 @@ function essentialPage(ctx, d, images, n, total) {
 }
 
 function dataPage(ctx, d, images, n, total) {
+  const k = pageScale(d, "data");
   const top = miniHeader(ctx, images, n, total);
   const chart = d.v.chart;
   if (hasChart(d.post)) {
@@ -229,15 +237,15 @@ function dataPage(ctx, d, images, n, total) {
       h += facts.length ? 60 + fh : 0;
       return { h, tl, nl, flh };
     };
-    let notePx = 34;
-    let factPx = 32;
+    let notePx = Math.round(34 * k);
+    let factPx = Math.round(32 * k);
     let chartH = natural;
     let m = measure(notePx, chartH, factPx);
     while (m.h > avail && notePx > 22) { notePx -= 2; m = measure(notePx, chartH, factPx); }
     while (m.h > avail && chartH > 220) { chartH -= 20; m = measure(notePx, chartH, factPx); }
     // room left: enlarge the reading sentence and the facts a little
-    while (notePx < 40 && measure(notePx + 2, chartH, factPx).h <= avail) { notePx += 2; m = measure(notePx, chartH, factPx); }
-    while (factPx < 38 && measure(notePx, chartH, factPx + 2).h <= avail) { factPx += 2; m = measure(notePx, chartH, factPx); }
+    while (notePx < 40 * k && measure(notePx + 2, chartH, factPx).h <= avail) { notePx += 2; m = measure(notePx, chartH, factPx); }
+    while (factPx < 38 * k && measure(notePx, chartH, factPx + 2).h <= avail) { factPx += 2; m = measure(notePx, chartH, factPx); }
     // whatever is still free is spread between the sections (not above the chart), the rest stays at the bottom
     const free = Math.max(0, avail - m.h);
     const gaps = (m.nl ? 1 : 0) + (facts.length ? 1 : 0);
@@ -293,7 +301,7 @@ function dataPage(ctx, d, images, n, total) {
     items.forEach((t, i) => {
       ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
       drawBullet(ctx, PAD, y + 8, 18, ctx.fillStyle);
-      const b = fitBlock(ctx, t, 600, 44, 28, per - 30, 1.3, MAXW - 50);
+      const b = fitBlock(ctx, t, 600, Math.round(44 * k), 26, per - 30, 1.3, MAXW - 50);
       ctx.fillStyle = INK;
       drawParagraph(ctx, b.text, PAD + 50, y + b.px * 0.8, MAXW - 50, b.lh, false, b.maxLines);
       y += per;
@@ -303,15 +311,23 @@ function dataPage(ctx, d, images, n, total) {
 }
 
 function pointsPage(ctx, d, images, n, total, points, heading) {
+  const k = pageScale(d, "points");
   const top = miniHeader(ctx, images, n, total);
   bigLabel(ctx, heading, top + 90);
   let y = top + 180;
   const per = (VH - 220 - y) / points.length;
   points.forEach((p, i) => {
     drawLabel(ctx, p.label.toUpperCase(), PAD, y);
+    let fy = 0;
+    if (p.value) { // "chiffre clé" section
+      ctx.fillStyle = BRICK;
+      const px = fitFontSize(ctx, p.value, "Anton", Math.round(120 * k), MAXW, 60);
+      ctx.fillText(p.value, PAD, y + 30 + px * 0.9);
+      fy = px + 20;
+    }
     ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
-    const b = fitBlock(ctx, p.text, 600, 54, 28, per - 90);
-    drawParagraph(ctx, b.text, PAD, y + 30 + b.px, MAXW, b.lh, false, b.maxLines);
+    const b = fitBlock(ctx, p.text, 600, Math.round(54 * k), 26, per - 90 - fy);
+    if (p.text) drawParagraph(ctx, b.text, PAD, y + 30 + fy + b.px, MAXW, b.lh, false, b.maxLines);
     if (i < points.length - 1) {
       ctx.fillStyle = DOT;
       ctx.fillRect(PAD, y + per - 40, MAXW, 2);
@@ -328,7 +344,7 @@ function takeawayPage(ctx, d, images, n, total) {
   const text = String(d.takeaway || "").replace(/^[\s«»“”"']+|[\s«»“”"']+$/g, "");
   const area = { top: top + 175, bottom: VH - 440 };
   const QH = 120; // room taken by each quote mark
-  const b = fitBlock(ctx, text, 700, 64, 34, area.bottom - area.top - QH * 2, 1.25);
+  const b = fitBlock(ctx, text, 700, Math.round(64 * pageScale(d, "takeaway")), 30, area.bottom - area.top - QH * 2, 1.25);
   const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
   const blockH = QH + lines * b.lh + QH;
   // the quote + text block is centred in the free space, so there is no hole under the opening quote
@@ -354,6 +370,86 @@ function takeawayPage(ctx, d, images, n, total) {
   drawSignature(ctx);
 }
 
+// Page added by the user ("Ajouter une page"): texte, chiffre clé, citation or liste
+function extraPage(ctx, d, images, n, total, x) {
+  const k = pageScale(d, `extra-${x.id}`);
+  const top = miniHeader(ctx, images, n, total);
+  const title = clean(x.title);
+  if (title) bigLabel(ctx, title, top + 90);
+  const areaTop = top + (title ? 170 : 90);
+  const areaBottom = VH - 200;
+  const avail = areaBottom - areaTop;
+  const text = clean(x.text);
+  const type = x.type || "text";
+
+  if (type === "figure") {
+    const value = clean(x.value);
+    const label = clean(x.label);
+    const vpx = value ? fitFontSize(ctx, value, "Anton", Math.round(230 * k), MAXW, 80) : 0;
+    ctx.font = `600 ${Math.round(40 * k)}px Outfit`;
+    const lLines = label ? Math.min(3, wrapWords(ctx, label, MAXW).length) : 0;
+    const llh = Math.round(40 * k * 1.3);
+    const rest = avail - vpx - lLines * llh - 80;
+    const b = text ? fitBlock(ctx, text, 400, Math.round(36 * k), 24, Math.max(60, rest)) : null;
+    const tLines = b ? Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length) : 0;
+    const h = vpx + (lLines ? 30 + lLines * llh : 0) + (tLines ? 50 + tLines * b.lh : 0);
+    let y = areaTop + Math.max(0, (avail - h) / 2);
+    if (value) { ctx.fillStyle = BRICK; ctx.font = `${vpx}px Anton`; ctx.fillText(value, PAD, y + vpx * 0.85); y += vpx; }
+    if (lLines) {
+      ctx.fillStyle = BORDEAUX;
+      ctx.font = `600 ${Math.round(40 * k)}px Outfit`;
+      drawParagraph(ctx, label, PAD, y + 30 + 40 * k, MAXW, llh, false, 3);
+      y += 30 + lLines * llh;
+    }
+    if (tLines) {
+      drawRule(ctx, y + 20);
+      ctx.fillStyle = INK;
+      ctx.font = `400 ${b.px}px Outfit`;
+      drawParagraph(ctx, b.text, PAD, y + 50 + b.px, MAXW, b.lh, false, b.maxLines);
+    }
+  } else if (type === "quote") {
+    const q = text.replace(/^[\s«»“”"']+|[\s«»“”"']+$/g, "");
+    const author = clean(x.label);
+    const QH = 120;
+    const b = fitBlock(ctx, q, "italic 600", Math.round(56 * k), 28, avail - QH - (author ? 90 : 0));
+    const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
+    const h = QH + lines * b.lh + (author ? 90 : 0);
+    const y0 = areaTop + Math.max(0, (avail - h) / 2);
+    ctx.fillStyle = BRICK;
+    ctx.font = "220px Anton";
+    ctx.fillText("“", PAD - 10, y0 + 175);
+    ctx.fillStyle = BORDEAUX;
+    ctx.font = `italic 600 ${b.px}px Outfit`;
+    const end = drawParagraph(ctx, b.text, PAD, y0 + QH + b.px, MAXW, b.lh, false, b.maxLines);
+    if (author) {
+      ctx.fillStyle = "#4a3a36";
+      ctx.font = "600 32px Outfit";
+      ctx.fillText(`— ${author}`, PAD, end + 40);
+    }
+  } else if (type === "list") {
+    const items = text.split("\n").map((t) => t.trim()).filter(Boolean).slice(0, 8);
+    const per = items.length ? avail / items.length : 0;
+    let y = areaTop + 10;
+    items.forEach((t, i) => {
+      const b = fitBlock(ctx, t, 600, Math.round(44 * k), 24, Math.min(per - 30, 260), 1.3, MAXW - 50);
+      const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW - 50).length);
+      drawBullet(ctx, PAD, y + b.px * 0.2, 18, i % 2 === 0 ? BRICK : CORAL);
+      ctx.fillStyle = INK;
+      ctx.font = `600 ${b.px}px Outfit`;
+      drawParagraph(ctx, b.text, PAD + 50, y + b.px * 0.8, MAXW - 50, b.lh, false, b.maxLines);
+      y += Math.min(per, lines * b.lh + 50);
+    });
+  } else {
+    const b = fitBlock(ctx, text, 500, Math.round(50 * k), 26, avail);
+    const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
+    const y0 = areaTop + Math.max(0, (avail - lines * b.lh) / 2 - 20);
+    ctx.fillStyle = INK;
+    ctx.font = `500 ${b.px}px Outfit`;
+    drawParagraph(ctx, b.text, PAD, y0 + b.px, MAXW, b.lh, false, b.maxLines);
+  }
+  swipeHint(ctx);
+}
+
 // ---------- plan ----------
 export function planCarousel(post) {
   const v = post.visual || {};
@@ -376,12 +472,29 @@ export function planCarousel(post) {
     else points.slice(0, 3).forEach((p) => pages.push(tag("points", (ctx, im, n, t) => pointsPage(ctx, d, im, n, t, [p], p.label))));
   }
   if (takeaway) pages.push(tag("takeaway", (ctx, im, n, t) => takeawayPage(ctx, d, im, n, t)));
-  return pages.slice(0, 6);
+
+  // pages added by the user, each placed after the page they chose (default: before "À retenir")
+  (Array.isArray(v.extra_pages) ? v.extra_pages : []).slice(0, 6).forEach((x) => {
+    if (!x || !x.id) return;
+    const page = tag(`extra-${x.id}`, (ctx, im, n, t) => extraPage(ctx, d, im, n, t, x));
+    let at = -1;
+    if (x.after === "end") at = pages.length;
+    else if (x.after && x.after !== "auto") {
+      const idx = pages.map((p) => p.kind).lastIndexOf(x.after);
+      if (idx >= 0) at = idx + 1;
+    }
+    if (at < 0) {
+      const t = pages.findIndex((p) => p.kind === "takeaway");
+      at = t >= 0 ? t : pages.length;
+    }
+    pages.splice(at, 0, page);
+  });
+  return pages.slice(0, 12);
 }
 
 const PAGE_LABELS = { cover: "Couverture", essential: "L'essentiel", data: "Les chiffres", points: "Décryptage", takeaway: "À retenir" };
 export const carouselPageKinds = (post) => planCarousel(post).map((f) => f.kind);
-export const carouselPageLabel = (kind) => PAGE_LABELS[kind] || "";
+export const carouselPageLabel = (kind) => PAGE_LABELS[kind] || (String(kind || "").startsWith("extra-") ? "Page ajoutée" : "");
 
 /** Renders each carousel page on its own canvas (created with `makeCanvas`). */
 export function renderCarousel(post, images, makeCanvas, template) {

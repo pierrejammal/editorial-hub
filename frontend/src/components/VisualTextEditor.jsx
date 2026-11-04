@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { resolveContent, hasChart } from "@/lib/visualRender";
-import { PenLine, ChevronDown, Plus, Trash2, RotateCcw } from "lucide-react";
+import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List } from "lucide-react";
 
 const inputCls =
   "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20";
@@ -15,6 +15,16 @@ const Section = ({ title, children }) => (
 );
 
 const TAKEAWAY_RE = /retenir|takeaway/i;
+const EXTRA_TYPES = [
+  { type: "text", label: "Texte", icon: Type, title: "À noter" },
+  { type: "figure", label: "Chiffre clé", icon: Hash, title: "Le chiffre" },
+  { type: "quote", label: "Citation", icon: Quote, title: "Ils l'ont dit" },
+  { type: "list", label: "Liste", icon: List, title: "En bref" },
+];
+const PLACES = [
+  ["auto", "Avant « À retenir »"], ["cover", "Après la couverture"], ["essential", "Après L'essentiel"],
+  ["data", "Après Les chiffres"], ["points", "Après Décryptage"], ["end", "À la fin"],
+];
 const PAGE_TABS = { cover: "Couverture", essential: "L'essentiel", data: "Les chiffres", points: "Décryptage", takeaway: "À retenir" };
 const FORMAT_HINT = {
   A: "Format Analyse : L'essentiel + les points d'analyse.",
@@ -131,15 +141,27 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
+            {points[i].value !== undefined && (
+              <input data-testid={`visual-edit-point-value-${i}`} value={points[i].value} placeholder="Chiffre clé (ex. 89,7 %)"
+                onChange={(e) => setPoint(i, { value: e.target.value })} className={`${inputCls} font-semibold`} />
+            )}
             <textarea data-testid={`visual-edit-point-${i}`} rows={2} value={points[i].text}
+              placeholder={points[i].value !== undefined ? "Ce que dit ce chiffre" : "Texte"}
               onChange={(e) => setPoint(i, { text: e.target.value })} className={`${inputCls} resize-y`} />
           </div>
         ))}
         {idx.length < max && (
-          <button type="button" onClick={() => setCustom({ points: [...points, { label: addLabel, text: "" }] })}
-            className="inline-flex items-center gap-1 text-xs font-medium text-forsides-slate hover:text-forsides-red">
-            <Plus className="h-3.5 w-3.5" /> Ajouter un point
-          </button>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-slate-500">Ajouter une partie :</span>
+            <button type="button" data-testid="visual-add-part-text" onClick={() => setCustom({ points: [...points, { label: addLabel, text: "" }] })}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200">
+              <Type className="h-3.5 w-3.5" /> Texte
+            </button>
+            <button type="button" data-testid="visual-add-part-figure" onClick={() => setCustom({ points: [...points, { label: "Chiffre clé", value: "", text: "" }] })}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200">
+              <Hash className="h-3.5 w-3.5" /> Chiffre clé
+            </button>
+          </div>
         )}
       </div>
     );
@@ -215,6 +237,18 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     </div>
   );
 
+  // ---------- text size sliders ----------
+  const slider = (label, value, onChange, testid) => (
+    <div className="flex items-center gap-3">
+      <span className="w-32 shrink-0 text-xs font-medium text-forsides-ink">{label}</span>
+      <input type="range" min={0.7} max={1.4} step={0.05} value={Number(value) || 1} aria-label={label} data-testid={testid}
+        onChange={(e) => onChange(Number(e.target.value))} className="flex-1 accent-[#C0453A]" />
+      <span className="w-11 text-right font-mono text-xs text-forsides-slate">{Math.round((Number(value) || 1) * 100)} %</span>
+    </div>
+  );
+  const pageSize = (kind, label = "Taille du texte") => slider(label, (v.page_text_scale || {})[kind],
+    (n) => updateVisual({ page_text_scale: { ...(v.page_text_scale || {}), [kind]: n } }), `visual-size-${kind}`);
+
   // ---------- carousel: one tab per page ----------
   const tabs = [...new Set(carKinds.length ? carKinds : ["cover", "essential", "data", "points", "takeaway"])];
   const activeKind = carKinds[carPage] || tabs[0];
@@ -222,6 +256,79 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     const i = carKinds.indexOf(kind);
     if (i >= 0 && onCarPage) onCarPage(i);
   };
+
+  // pages added by the user (texte, chiffre clé, citation, liste)
+  const extras = Array.isArray(v.extra_pages) ? v.extra_pages : [];
+  const setExtra = (id, patch) => updateVisual({ extra_pages: extras.map((x) => (x.id === id ? { ...x, ...patch } : x)) });
+  const [pendingKind, setPendingKind] = useState(null);
+  useEffect(() => { // show the new page as soon as it exists
+    if (pendingKind && carKinds.includes(pendingKind)) { goTab(pendingKind); setPendingKind(null); }
+  }, [carKinds, pendingKind]); // eslint-disable-line react-hooks/exhaustive-deps
+  const addExtra = (type) => {
+    const id = Date.now().toString(36);
+    const def = EXTRA_TYPES.find((t) => t.type === type);
+    const after = String(activeKind).startsWith("extra-") ? "auto" : activeKind === "takeaway" ? "end" : activeKind;
+    updateVisual({ extra_pages: [...extras, { id, type, title: def.title, text: "", value: "", label: "", after }] });
+    setPendingKind(`extra-${id}`);
+  };
+  const extraOf = (kind) => extras.find((x) => `extra-${x.id}` === kind);
+  const tabLabel = (k) => {
+    const x = extraOf(k);
+    if (x) return `+ ${x.title || EXTRA_TYPES.find((t) => t.type === x.type)?.label || "Page"}`;
+    return PAGE_TABS[k] || k;
+  };
+  const extraEditor = (x) => (
+    <Section>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-slate-500">Type :</span>
+        {EXTRA_TYPES.map((t) => (
+          <button key={t.type} type="button" onClick={() => setExtra(x.id, { type: t.type })}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+              x.type === t.type ? "bg-forsides-ink text-white" : "bg-slate-100 text-forsides-slate hover:bg-slate-200"}`}>
+            <t.icon className="h-3.5 w-3.5" /> {t.label}
+          </button>
+        ))}
+      </div>
+      <div>
+        <Label>Titre de la page</Label>
+        <input data-testid="visual-extra-title" value={x.title || ""} onChange={(e) => setExtra(x.id, { title: e.target.value })} className={inputCls} />
+      </div>
+      {x.type === "figure" && (
+        <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
+          <div>
+            <Label>Chiffre</Label>
+            <input data-testid="visual-extra-value" value={x.value || ""} placeholder="89,7 %" onChange={(e) => setExtra(x.id, { value: e.target.value })} className={`${inputCls} sm:w-40`} />
+          </div>
+          <div>
+            <Label>Ce qu'il mesure</Label>
+            <input value={x.label || ""} placeholder="Taux de remboursement AMO des assurés en ALD" onChange={(e) => setExtra(x.id, { label: e.target.value })} className={inputCls} />
+          </div>
+        </div>
+      )}
+      <div>
+        <Label>{x.type === "list" ? "Éléments (un par ligne)" : x.type === "quote" ? "Citation" : x.type === "figure" ? "Commentaire (facultatif)" : "Texte"}</Label>
+        <textarea data-testid="visual-extra-text" rows={x.type === "list" ? 5 : 4} value={x.text || ""}
+          onChange={(e) => setExtra(x.id, { text: e.target.value })} className={`${inputCls} resize-y`} />
+      </div>
+      {x.type === "quote" && (
+        <div>
+          <Label>Auteur (facultatif)</Label>
+          <input value={x.label || ""} placeholder="Nom, fonction" onChange={(e) => setExtra(x.id, { label: e.target.value })} className={inputCls} />
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <Label>Position</Label>
+        <select value={x.after || "auto"} onChange={(e) => setExtra(x.id, { after: e.target.value })} className={`${inputCls} w-auto py-1.5 text-xs`}>
+          {PLACES.filter(([k]) => ["auto", "end"].includes(k) || carKinds.includes(k)).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+        <button type="button" data-testid="visual-extra-delete"
+          onClick={() => { updateVisual({ extra_pages: extras.filter((e) => e.id !== x.id) }); if (onCarPage) onCarPage(Math.max(0, carPage - 1)); }}
+          className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-forsides-slate hover:text-forsides-red">
+          <Trash2 className="h-3.5 w-3.5" /> Supprimer cette page
+        </button>
+      </div>
+    </Section>
+  );
   const hasDataPage = carKinds.includes("data");
   const carouselPage = {
     cover: (
@@ -288,15 +395,31 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                   <button key={k} type="button" data-testid={`visual-edit-page-${k}`} onClick={() => goTab(k)}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                       activeKind === k ? "bg-forsides-red text-white" : "bg-slate-100 text-forsides-slate hover:bg-slate-200"}`}>
-                    {carKinds.indexOf(k) >= 0 ? `${carKinds.indexOf(k) + 1}. ` : ""}{PAGE_TABS[k] || k}
+                    {carKinds.indexOf(k) >= 0 ? `${carKinds.indexOf(k) + 1}. ` : ""}{tabLabel(k)}
                   </button>
                 ))}
               </div>
-              {carouselPage[activeKind]}
+              {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
+              {extraOf(activeKind) ? extraEditor(extraOf(activeKind)) : carouselPage[activeKind]}
+              {extras.length < 6 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-xs" data-testid="visual-add-page">
+                  <span className="font-semibold text-forsides-ink">Ajouter une page après celle-ci :</span>
+                  {EXTRA_TYPES.map((t) => (
+                    <button key={t.type} type="button" data-testid={`visual-add-page-${t.type}`} onClick={() => addExtra(t.type)}
+                      className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200">
+                      <Plus className="h-3 w-3" /><t.icon className="h-3.5 w-3.5" /> {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             <>
               <p className="text-xs text-slate-500">{FORMAT_HINT[version]} Les changements s'affichent tout de suite. Un champ vide garde le texte d'origine (affiché en grisé).</p>
+              <Section>
+                {slider("Taille du titre", v.title_scale, (n) => updateVisual({ title_scale: n }), "visual-size-title")}
+                {slider("Taille du texte", v.text_scale, (n) => updateVisual({ text_scale: n }), "visual-size-text")}
+              </Section>
               <Section>{summaryField}</Section>
               {version === "B" && (
                 <Section title="Chiffres">

@@ -1224,7 +1224,9 @@ class AssistReq(BaseModel):
 ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure_label", "important_date",
                       "data_points", "insight_line", "chart", "recommended_format", "custom",
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
-                      "labels", "carousel_labels", "source_label", "date_label"}
+                      "labels", "carousel_labels", "source_label", "date_label",
+                      "text_scale", "title_scale", "page_text_scale", "extra_pages"}
+EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
                               "analysis", "takeaway"}
@@ -1373,6 +1375,13 @@ Ce que tu peux modifier:
   "deadline": "échéance à retenir"}}; formats Analyse/Data/Graphique → visual.labels {{"essential", "figures", "atSource",
   "source", "sources", "deadline"}}. Renvoie l'objet COMPLET (anciennes valeurs + nouvelles);
 - la source et la date affichées: visual.source_label, visual.date_label.
+- tailles de texte (0.7 à 1.4, défaut 1): visual.text_scale et visual.title_scale (formats A/B/C);
+  carrousel, par page: visual.page_text_scale {{"cover": titre de couverture, "essential", "data", "points", "takeaway",
+  "extra-<id>"}}. Renvoie l'objet complet.
+- pages ajoutées au carrousel: visual.extra_pages = liste COMPLÈTE de {{"id": "court", "type": "text"|"figure"|"quote"|"list",
+  "title": "titre de page", "text": "texte (list: un élément par ligne; quote: la citation)", "value": "chiffre (figure)",
+  "label": "ce que mesure le chiffre (figure) ou auteur (quote)", "after": "auto"|"cover"|"essential"|"data"|"points"|"end"}}.
+- un retour à la ligne voulu s'écrit \\n dans le texte; une partie « chiffre clé » dans les points = point avec "value".
 Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique).
 (« Source » passe AUTOMATIQUEMENT au pluriel « Sources » quand le post a plusieurs sources.)
 N'invente JAMAIS un champ qui n'est pas dans la liste ci-dessus.
@@ -1417,6 +1426,32 @@ Renvoie STRICTEMENT ce JSON:
                             **{k: str(val)[:60] for k, val in vis[key].items() if k in allowed and isinstance(val, str)}}
             else:
                 vis.pop(key)
+    for key in ("text_scale", "title_scale"):
+        if key in vis:
+            try:
+                vis[key] = max(0.7, min(1.4, float(vis[key])))
+            except (TypeError, ValueError):
+                vis.pop(key)
+    if "page_text_scale" in vis:
+        pts = vis["page_text_scale"]
+        if isinstance(pts, dict):
+            clean_pts = {}
+            for k, val in pts.items():
+                try:
+                    clean_pts[str(k)[:40]] = max(0.7, min(1.4, float(val)))
+                except (TypeError, ValueError):
+                    pass
+            vis["page_text_scale"] = {**((post.get("visual") or {}).get("page_text_scale") or {}), **clean_pts}
+        else:
+            vis.pop("page_text_scale")
+    if "extra_pages" in vis:
+        ep = vis["extra_pages"]
+        if isinstance(ep, list):
+            vis["extra_pages"] = [
+                {**{k: str(x.get(k, ""))[:600] for k in EXTRA_PAGE_FIELDS}, "id": str(x.get("id") or uuid.uuid4().hex[:6])[:20]}
+                for x in ep[:6] if isinstance(x, dict) and x.get("type") in ("text", "figure", "quote", "list")]
+        else:
+            vis.pop("extra_pages")
     for key in ("source_label", "date_label"):
         if key in vis and not isinstance(vis[key], str):
             vis.pop(key)

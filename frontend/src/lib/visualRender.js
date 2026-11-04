@@ -146,6 +146,14 @@ const DICT = {
   },
 };
 let LANG = "fr";
+
+// Text sizes chosen by the user for this post ("Taille du texte" / "Taille du titre", 0.7 – 1.4)
+let TXT = 1;
+let TTL = 1;
+const clampScale = (x) => { const n = Number(x); return Number.isFinite(n) && n > 0 ? Math.max(0.7, Math.min(1.4, n)) : 1; };
+export const setTextScales = (text, title) => { TXT = clampScale(text); TTL = clampScale(title); };
+export const titleScale = () => TTL;
+
 export const langOf = (post) => (post?.meta?.lang === "en" ? "en" : "fr");
 export const setRenderLang = (lang) => { LANG = lang === "en" ? "en" : "fr"; };
 // Headings typed by the user for this post (visual.labels) replace the default ones
@@ -206,24 +214,28 @@ export const sourceLogoSrc = (source) => {
 };
 
 function wrapWords(ctx, text, maxW) {
-  const words = (text || "").split(/\s+/).filter(Boolean);
+  // a line break typed by the user (Enter) starts a new line on the visual
   const lines = [];
-  let line = [];
-  for (const w of words) {
-    const test = [...line, w].join(" ");
-    if (ctx.measureText(test).width > maxW && line.length) {
-      lines.push(line);
-      line = [w];
-    } else line.push(w);
-  }
-  if (line.length) lines.push(line);
+  String(text || "").split(/\n/).forEach((para) => {
+    const words = para.split(/\s+/).filter(Boolean);
+    let line = [];
+    for (const w of words) {
+      const test = [...line, w].join(" ");
+      if (ctx.measureText(test).width > maxW && line.length) {
+        lines.push(line);
+        line = [w];
+      } else line.push(w);
+    }
+    if (line.length) lines.push(line);
+    if (lines.length) lines[lines.length - 1].hard = true; // end of a paragraph: never justified
+  });
   return lines;
 }
 
 // When text is too long for its box, drop whole trailing sentences rather than cutting a
 // sentence in the middle with "…" (a half sentence on the visual reads as an error).
 function fitSentences(ctx, text, maxW, maxLines) {
-  const t = (text || "").replace(/\s+/g, " ").trim();
+  const t = String(text || "").replace(/[^\S\n]+/g, " ").replace(/ *\n */g, "\n").trim();
   if (wrapWords(ctx, t, maxW).length <= maxLines) return t;
   const sentences = t.split(/(?<=[.!?])\s+(?=[A-ZÀ-ÖØ-Ý0-9«"“])/);
   for (let n = sentences.length - 1; n >= 1; n--) {
@@ -250,7 +262,7 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, dra
     const wordsW = ln.reduce((s, w) => s + ctx.measureText(w).width, 0);
     const gap = ln.length > 1 ? (maxW - wordsW) / (ln.length - 1) : 0;
     // justify only when it looks natural: huge holes between a few words read as a layout bug
-    if (justify && !isLast && ln.length > 1 && gap <= ctx.measureText(" ").width * 3.2) {
+    if (justify && !isLast && !ln.hard && ln.length > 1 && gap <= ctx.measureText(" ").width * 3.2) {
       let cx = x;
       ln.forEach((w) => {
         ctx.fillText(w, cx, cy);
@@ -267,7 +279,7 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, dra
 // The title is never cut: a long title gets a smaller font until it fits in maxLines.
 function drawTitle(ctx, title, top, size, lineH, maxLines) {
   const maxW = VW - PAD * 2;
-  let px = size;
+  let px = Math.round(size * TTL);
   const fam = titleFontFamily();
   ctx.font = `800 ${px}px ${fam}`;
   while (px > 34 && wrapWords(ctx, title, maxW).length > maxLines) {
@@ -372,8 +384,8 @@ export function resolveContent(post, title) {
   if (typeof cu.summary === "string") auto.summary = clean(cu.summary);
   if (Array.isArray(cu.points)) {
     auto.points = cu.points
-      .map((p) => ({ label: clean(p.label) || T("takeaway", lg), text: clean(p.text) }))
-      .filter((p) => p.text);
+      .map((p) => ({ label: clean(p.label) || T("takeaway", lg), text: clean(p.text), value: clean(p.value) }))
+      .filter((p) => p.text || p.value);
   }
   return auto;
 }
@@ -381,6 +393,15 @@ export function resolveContent(post, title) {
 // Density-aware scale: sparse content gets bigger type so the canvas never looks empty,
 // and dense content gets smaller type so it never runs into the source line / signature.
 function fitScale(measure, avail) {
+  const s0 = fitScaleAuto(measure, avail);
+  if (TXT === 1) return s0;
+  // user size on top of the automatic fit, still never overflowing
+  let s = s0 * TXT;
+  while (s > 0.45 && measure(s) > avail) s -= 0.03;
+  return s;
+}
+
+function fitScaleAuto(measure, avail) {
   let s = 1;
   if (measure(1) > avail) {
     while (s > 0.62 && measure(s) > avail) s -= 0.04;
@@ -427,7 +448,7 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
       h += 44 * s + drawParagraph(ctx, content.summary, PAD, 0, maxW, 44 * s, false, 6, false);
     }
     ctx.font = `500 ${Math.round(30 * s)}px Outfit`;
-    points.forEach((p) => { h += 52 * s + drawParagraph(ctx, p.text, PAD + 40, 0, maxW - 40, 40 * s, false, 4, false); });
+    points.forEach((p) => { h += 52 * s + (p.value ? 78 * s : 0) + drawParagraph(ctx, p.text, PAD + 40, 0, maxW - 40, 40 * s, false, 4, false); });
     return h + Math.max(0, blocks - 1) * 40;
   };
   const s = fitScale(measure, bottom - top);
@@ -449,6 +470,12 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
     ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
     drawBullet(ctx, PAD, y - 6, 14, ctx.fillStyle);
     drawLabel(ctx, p.label.toUpperCase(), PAD + 40, y);
+    if (p.value) { // "chiffre clé" section: the figure in large, its text below
+      ctx.fillStyle = BRICK;
+      ctx.font = `${Math.round(72 * s)}px Anton`;
+      ctx.fillText(p.value, PAD + 40, y + 88 * s);
+      y += 78 * s;
+    }
     ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
     ctx.font = `500 ${Math.round(30 * s)}px Outfit`;
     y = drawParagraph(ctx, p.text, PAD + 40, y + 46 * s, maxW - 40, 40 * s, false, Math.min(4, room)) + gap;
@@ -538,13 +565,19 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
   ctx.textAlign = "right";
   const rx = rightX + rightW;
   if (points.length) {
-    const measure = (s) => { ctx.font = `600 ${Math.round(34 * s)}px Outfit`; return points.reduce((h, p) => h + 56 * s + drawParagraph(ctx, p.text, rx, 0, rightW, 44 * s, false, 4, false), 0) + (points.length - 1) * 42; };
+    const measure = (s) => { ctx.font = `600 ${Math.round(34 * s)}px Outfit`; return points.reduce((h, p) => h + 56 * s + (p.value ? 80 * s : 0) + drawParagraph(ctx, p.text, rx, 0, rightW, 44 * s, false, 4, false), 0) + (points.length - 1) * 42; };
     const s = fitScale(measure, bottom - top);
     let ry = top;
     points.forEach((p, i) => {
       const room = Math.floor((bottom - ry - 56 * s) / (44 * s));
       if (room < 1) return;
       drawLabel(ctx, p.label.toUpperCase(), rx, ry + 10);
+      if (p.value) {
+        ctx.fillStyle = BRICK;
+        ctx.font = `${Math.round(74 * s)}px Anton`;
+        ctx.fillText(p.value, rx, ry + 100 * s);
+        ry += 80 * s;
+      }
       ctx.fillStyle = i % 2 === 0 ? BORDEAUX : BRICK;
       ctx.font = `600 ${Math.round(34 * s)}px Outfit`;
       ry = drawParagraph(ctx, p.text, rx, ry + 56 * s, rightW, 44 * s, false, Math.min(4, room)) + 42;
@@ -952,6 +985,7 @@ export function renderVisual(ctx, { post, version, images, template }) {
   const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
   setRenderLang(langOf(post));
   setRenderLabels(v.labels);
+  setTextScales(v.text_scale, v.title_scale);
   const headerBottom = drawHeader(ctx, post, images);
   const content = resolveContent(post, title);
   const footerTop = VH - 200;
