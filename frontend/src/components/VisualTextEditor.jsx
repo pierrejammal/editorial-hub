@@ -59,9 +59,8 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   const labelField = (map, key, label, placeholder, opts = {}) => (
     <div key={`${map}.${key}`}>
       <Label>{label}</Label>
-      <input data-testid={`visual-edit-${map}-${key}`} value={(v[map] || {})[key] ?? ""} placeholder={placeholder}
-        maxLength={opts.max || 60}
-        onChange={(e) => updateVisual({ [map]: { ...(v[map] || {}), [key]: e.target.value } })} className={inputCls} />
+      <textarea data-testid={`visual-edit-${map}-${key}`} rows={opts.rows || 1} value={(v[map] || {})[key] ?? ""} placeholder={placeholder}
+        onChange={(e) => updateVisual({ [map]: { ...(v[map] || {}), [key]: e.target.value } })} className={`${inputCls} resize-y`} />
     </div>
   );
   const kLabel = (key, label, def) => labelField("carousel_labels", key, label, def);
@@ -181,13 +180,13 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       </div>
       <div>
         <Label>Question de fin</Label>
-        <input data-testid="visual-edit-cta-question" maxLength={60} value={v.cta_question ?? ""} placeholder="Vous avez trouvé ce décryptage utile ?"
-          onChange={(e) => updateVisual({ cta_question: e.target.value })} className={inputCls} />
+        <textarea rows={1} data-testid="visual-edit-cta-question" value={v.cta_question ?? ""} placeholder="Vous avez trouvé ce décryptage utile ?"
+          onChange={(e) => updateVisual({ cta_question: e.target.value })} className={`${inputCls} resize-y`} />
       </div>
       <div>
         <Label>Phrase d'appel</Label>
-        <input data-testid="visual-edit-cta-text" maxLength={80} value={v.cta_text ?? ""} placeholder="Suivez FORSIDES pour ne rien manquer de l'actualité actuarielle."
-          onChange={(e) => updateVisual({ cta_text: e.target.value })} className={inputCls} />
+        <textarea rows={1} data-testid="visual-edit-cta-text" value={v.cta_text ?? ""} placeholder="Suivez FORSIDES pour ne rien manquer de l'actualité actuarielle."
+          onChange={(e) => updateVisual({ cta_text: e.target.value })} className={`${inputCls} resize-y`} />
       </div>
     </div>
   );
@@ -298,8 +297,8 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                   className="p-1 text-slate-400 hover:text-forsides-red"><Trash2 className="h-3.5 w-3.5" /></button>
               </span>
             </div>
-            <input value={b.title || ""} placeholder="Sous-titre (facultatif)" onChange={(e) => setB(i, { title: e.target.value })}
-              className={`${inputCls} py-1.5 text-xs font-semibold uppercase`} />
+            <textarea rows={1} value={b.title || ""} placeholder="Sous-titre (facultatif)" onChange={(e) => setB(i, { title: e.target.value })}
+              className={`${inputCls} resize-y py-1.5 text-xs font-semibold uppercase`} />
             {b.type === "figure" && (
               <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
                 <input value={b.value || ""} placeholder="Chiffre (ex. 19,7 Md€)" onChange={(e) => setB(i, { value: e.target.value })} className={`${inputCls} sm:w-40`} />
@@ -375,7 +374,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       </div>
       <div>
         <Label>Titre de la page</Label>
-        <input data-testid="visual-extra-title" value={x.title || ""} onChange={(e) => setExtra(x.id, { title: e.target.value })} className={inputCls} />
+        <textarea rows={1} data-testid="visual-extra-title" value={x.title || ""} onChange={(e) => setExtra(x.id, { title: e.target.value })} className={`${inputCls} resize-y`} />
       </div>
       {x.type === "figure" && (
         <div className="grid gap-2 sm:grid-cols-[auto_1fr]">

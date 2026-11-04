@@ -3,7 +3,7 @@ import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
   clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
-  applyTemplate, currentTemplate, tplScale, setRenderLabels, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet,
+  applyTemplate, currentTemplate, tplScale, setRenderLabels, ellipsize, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet,
 } from "@/lib/visualRender";
 
 const CL = {
@@ -167,15 +167,24 @@ function swipeHint(ctx, label = L.swipe) {
   ctx.fillStyle = BRICK;
   ctx.font = "700 30px Outfit";
   ctx.textAlign = "left";
-  ctx.fillText(`${label}  →`, PAD, VH - 70);
+  ctx.fillText(ellipsize(ctx, `${label}  →`, MAXW - 160), PAD, VH - 70);
 }
 
+// Page title: wraps (and honours typed line breaks) and shrinks so it never leaves the page.
+// Returns the extra height it takes beyond one line, so the page content moves down accordingly.
 function bigLabel(ctx, text, y) {
+  const fam = titleFontFamily();
+  const w = MAXW - 34;
+  let px = 44;
+  ctx.font = `800 ${px}px ${fam}`;
+  while (px > 28 && wrapWords(ctx, text, w).length > 2) { px -= 2; ctx.font = `800 ${px}px ${fam}`; }
+  const lh = Math.round(px * 1.18);
+  const lines = Math.min(5, wrapWords(ctx, text, w).length);
   ctx.fillStyle = BRICK;
   ctx.fillRect(PAD, y - 34, 14, 40);
   ctx.fillStyle = BORDEAUX;
-  ctx.font = `800 44px ${titleFontFamily()}`;
-  ctx.fillText(text, PAD + 34, y);
+  drawParagraph(ctx, text, PAD + 34, y, w, lh, false, 5);
+  return Math.max(0, (lines - 1) * lh);
 }
 
 // ---------- pages ----------
@@ -187,19 +196,21 @@ function coverPage(ctx, d, images, n, total) {
   let px = Math.round(84 * pageScale(d, "cover"));
   const fam = titleFontFamily();
   ctx.font = `800 ${px}px ${fam}`;
-  while (px > 46 && wrapWords(ctx, d.title, MAXW).length * px * 1.18 > area.bottom - area.top) {
+  // a long title (or one with line breaks) gets smaller until it fits in the page
+  while (px > 26 && wrapWords(ctx, d.title, MAXW).length * px * 1.18 > area.bottom - area.top) {
     px -= 2;
     ctx.font = `800 ${px}px ${fam}`;
   }
   const lh = Math.round(px * 1.18);
-  const lines = wrapWords(ctx, d.title, MAXW).length;
-  const y0 = area.top + ((area.bottom - area.top) - lines * lh) / 2 + px;
-  const yEnd = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, 8);
+  const maxLines = Math.max(1, Math.floor((area.bottom - area.top) / lh));
+  const lines = Math.min(maxLines, wrapWords(ctx, d.title, MAXW).length);
+  const y0 = area.top + Math.max(0, ((area.bottom - area.top) - lines * lh) / 2) + px;
+  const yEnd = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, maxLines);
   drawRule(ctx, yEnd + 10);
   if (d.content.source) {
     ctx.fillStyle = "#4a3a36";
     ctx.font = "500 30px Outfit";
-    ctx.fillText(`${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74);
+    drawParagraph(ctx, `${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74, MAXW, 40, false, 2);
   }
   swipeHint(ctx);
   pageCounter(ctx, n, total);
@@ -208,9 +219,9 @@ function coverPage(ctx, d, images, n, total) {
 // Page 2: key figure + summary + a few facts, sized up and centred so the page is never half empty.
 function essentialPage(ctx, d, images, n, total) {
   const k = pageScale(d, "essential");
-  const top = miniHeader(ctx, images, n, total);
+  let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
-  bigLabel(ctx, L.essential, top + 90);
+  top += bigLabel(ctx, L.essential, top + 90);
   const areaTop = top + 150;
   const RB = VH - 170;
   const areaBottom = RB - blocksReserve(ctx, d);
@@ -288,7 +299,7 @@ function essentialPage(ctx, d, images, n, total) {
       drawRule(ctx, y + 40);
       ctx.fillStyle = "#4a3a36";
       ctx.font = "500 28px Outfit";
-      ctx.fillText(src, PAD, y + 90);
+      drawParagraph(ctx, src, PAD, y + 90, MAXW, 36, false, 2);
       y += p.h;
     }
   });
@@ -299,13 +310,13 @@ function essentialPage(ctx, d, images, n, total) {
 function dataPage(ctx, d, images, n, total) {
   const k = pageScale(d, "data");
   const res = blocksReserve(ctx, d);
-  const top = miniHeader(ctx, images, n, total);
+  let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
   const chart = d.v.chart;
   if (hasChart(d.post)) {
     // chart sized to what it needs, its reading sentence in full, then the key facts;
     // the whole block is centred so the page is never half empty
-    bigLabel(ctx, L.figures, top + 90);
+    top += bigLabel(ctx, L.figures, top + 90);
     const areaTop = top + 135;
     const areaBottom = VH - 170 - res;
     const ctitle = clean(chart.title).toUpperCase();
@@ -378,7 +389,7 @@ function dataPage(ctx, d, images, n, total) {
       });
     }
   } else {
-    bigLabel(ctx, L.keyFigures, top + 90);
+    top += bigLabel(ctx, L.keyFigures, top + 90);
     let y = top + 190;
     const items = (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 4);
     const date = clean(d.v.important_date);
@@ -408,9 +419,9 @@ function dataPage(ctx, d, images, n, total) {
 
 function pointsPage(ctx, d, images, n, total, points, heading) {
   const k = pageScale(d, "points");
-  const top = miniHeader(ctx, images, n, total);
+  let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
-  bigLabel(ctx, heading, top + 90);
+  top += bigLabel(ctx, heading, top + 90);
   let y = top + 180;
   const res = blocksReserve(ctx, d);
   const per = (VH - 220 - res - y) / points.length;
@@ -437,9 +448,9 @@ function pointsPage(ctx, d, images, n, total, points, heading) {
 }
 
 function takeawayPage(ctx, d, images, n, total) {
-  const top = miniHeader(ctx, images, n, total);
+  let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
-  bigLabel(ctx, L.takeaway, top + 90);
+  top += bigLabel(ctx, L.takeaway, top + 90);
   // quotes are drawn by the page itself (opening and closing), so strip any typed in the text
   const text = String(d.takeaway || "").replace(/^[\s«»“”"']+|[\s«»“”"']+$/g, "");
   const area = { top: top + 175, bottom: VH - 440 - blocksReserve(ctx, d) };
@@ -463,22 +474,23 @@ function takeawayPage(ctx, d, images, n, total) {
   drawPageBlocks(ctx, d, VH - 420);
   endShift(ctx); // the closing question stays in place
   drawRule(ctx, VH - 400);
+  // closing texts wrap (2 lines max each) instead of running off the page
   ctx.fillStyle = INK;
   ctx.font = "600 34px Outfit";
-  ctx.fillText(clean(d.v.cta_question) || L.ctaQ, PAD, VH - 320);
+  const qEnd = drawParagraph(ctx, clean(d.v.cta_question) || L.ctaQ, PAD, VH - 320, MAXW, 42, false, 2);
   ctx.fillStyle = "#4a3a36";
   ctx.font = "400 30px Outfit";
-  ctx.fillText(clean(d.v.cta_text) || L.cta, PAD, VH - 270);
+  drawParagraph(ctx, clean(d.v.cta_text) || L.cta, PAD, Math.max(VH - 270, qEnd + 8), MAXW, 38, false, 2);
   drawSignature(ctx);
 }
 
 // Page added by the user ("Ajouter une page"): texte, chiffre clé, citation or liste
 function extraPage(ctx, d, images, n, total, x) {
   const k = pageScale(d, `extra-${x.id}`);
-  const top = miniHeader(ctx, images, n, total);
+  let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
   const title = clean(x.title);
-  if (title) bigLabel(ctx, title, top + 90);
+  if (title) top += bigLabel(ctx, title, top + 90);
   const areaTop = top + (title ? 170 : 90);
   const areaBottom = VH - 200 - blocksReserve(ctx, d);
   const avail = areaBottom - areaTop;

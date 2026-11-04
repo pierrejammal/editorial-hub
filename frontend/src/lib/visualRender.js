@@ -282,11 +282,17 @@ function drawTitle(ctx, title, top, size, lineH, maxLines) {
   let px = Math.round(size * TTL);
   const fam = titleFontFamily();
   ctx.font = `800 ${px}px ${fam}`;
+  // long titles: smaller, then up to 2 more lines, so the whole title is shown
   while (px > 34 && wrapWords(ctx, title, maxW).length > maxLines) {
     px -= 2;
     ctx.font = `800 ${px}px ${fam}`;
   }
-  return drawParagraph(ctx, title, PAD, top, maxW, Math.round((lineH * px) / size), true, maxLines);
+  let lines = maxLines;
+  while (px > 24 && wrapWords(ctx, title, maxW).length > lines) {
+    if (lines < maxLines + 2) lines += 1;
+    else { px -= 2; ctx.font = `800 ${px}px ${fam}`; }
+  }
+  return drawParagraph(ctx, title, PAD, top, maxW, Math.round((lineH * px) / size), true, lines);
 }
 
 function drawEmblem(ctx, id, rightX, topY, fallbackName = "") {
@@ -322,7 +328,11 @@ function drawLabel(ctx, text, x, y) {
   ctx.font = "600 18px Outfit";
   const prev = ctx.letterSpacing;
   ctx.letterSpacing = "3px";
-  ctx.fillText(text, x, y);
+  // never wider than the page: smaller letters, then "…"
+  const room = ctx.textAlign === "right" ? x - PAD : VW - PAD - x;
+  const t = String(text || "").replace(/\s*\n\s*/g, " ");
+  if (ctx.measureText(t).width > room) { ctx.letterSpacing = "1px"; ctx.font = "600 15px Outfit"; }
+  ctx.fillText(ellipsize(ctx, t, room), x, y);
   ctx.letterSpacing = prev || "0px";
 }
 

@@ -1428,7 +1428,7 @@ Renvoie STRICTEMENT ce JSON:
             if isinstance(vis[key], dict):
                 old = (post.get("visual") or {}).get(key) or {}
                 vis[key] = {**(old if isinstance(old, dict) else {}),
-                            **{k: str(val)[:60] for k, val in vis[key].items() if k in allowed and isinstance(val, str)}}
+                            **{k: str(val)[:400] for k, val in vis[key].items() if k in allowed and isinstance(val, str)}}
             else:
                 vis.pop(key)
     for key in ("text_scale", "title_scale"):

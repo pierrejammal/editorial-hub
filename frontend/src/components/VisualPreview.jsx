@@ -273,13 +273,15 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         <label className="mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-slate-400">
           <Type className="h-3 w-3" /> Titre du visuel
         </label>
-        <input
+        {/* Enter = new line in the title; the title shrinks on the visual to always fit */}
+        <textarea
           data-testid="visual-title-input"
+          rows={Math.min(5, Math.max(2, String(title).split("\n").length))}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => updateVisual({ title_short: title })}
-          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20"
+          onChange={(e) => { setTitle(e.target.value); updateVisual({ title_short: e.target.value }); }}
+          className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20"
         />
+        <p className="mt-1 text-[11px] text-slate-400">Entrée = retour à la ligne. Pas de limite : le titre s'adapte pour rester dans la page.</p>
       </div>
 
       <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual}
