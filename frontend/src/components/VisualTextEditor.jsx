@@ -78,6 +78,38 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       </label>
     );
   };
+  // "Ce qui s'affiche sur cette page": every element of a carousel page can be removed (and put back)
+  const SHOWABLE = {
+    cover: [["cover.title", "Titre"]],
+    essential: [["essential.heading", "Titre de la page"], ["essential.summary", "Résumé"], ["essential.figure", "Chiffre clé"], ["essential.facts", "Faits clés"]],
+    data: [["data.heading", "Titre de la page"], ["data.chartTitle", "Titre du graphique"], ["data.chart", "Graphique"], ["data.note", "Phrase sous le graphique"], ["data.date", "Échéance"], ["data.facts", "Faits chiffrés"]],
+    points: [["points.heading", "Titre de la page"]],
+    takeaway: [["takeaway.heading", "Titre de la page"], ["takeaway.quote", "Message"], ["takeaway.cta", "Question et appel de fin"], ["takeaway.signature", "Signature"]],
+  };
+  const hiddenMap = v.hidden || {};
+  const showList = (kind) => {
+    const items = (SHOWABLE[kind] || (String(kind).startsWith("extra-") ? [[`${kind}.heading`, "Titre de la page"]] : []))
+      .filter(([key]) => !(kind === "data" && (hasChart(post) ? key === "data.date" : ["data.chartTitle", "data.chart", "data.note"].includes(key))));
+    const box = (checked, onChange, label, testid) => (
+      <label key={testid} className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-xs text-forsides-ink ring-1 ring-slate-200">
+        <input type="checkbox" data-testid={testid} checked={checked} onChange={(e) => onChange(e.target.checked)} /> {label}
+      </label>
+    );
+    const ps = (v.page_source || {})[kind];
+    return (
+      <div data-testid="visual-show-list">
+        <p className="mb-1.5 text-xs font-semibold text-forsides-ink">Ce qui s'affiche sur cette page</p>
+        <div className="flex flex-wrap gap-1.5">
+          {items.map(([key, label]) => box(!hiddenMap[key],
+            (on) => updateVisual({ hidden: { ...hiddenMap, [key]: !on } }), label, `visual-show-${key}`))}
+          {box(typeof ps === "boolean" ? ps : kind === "cover" || kind === "essential",
+            (on) => updateVisual({ page_source: { ...(v.page_source || {}), [kind]: on } }), "Source", `visual-show-source-${kind}`)}
+          {(kind === "cover" || kind === "essential") && box(!v.hide_date, (on) => updateVisual({ hide_date: !on }), "Date", `visual-show-date-${kind}`)}
+        </div>
+      </div>
+    );
+  };
+
   const sourceFields = (
     <div className="space-y-2">
     <div className="grid gap-2">
@@ -88,8 +120,15 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       </div>
       <div>
         <Label>Date affichée</Label>
-        <input data-testid="visual-edit-date" value={v.date_label ?? ""} placeholder={post.meta?.date_label || "NOVEMBRE 2026"}
-          onChange={(e) => updateVisual({ date_label: e.target.value })} className={inputCls} />
+        <div className="flex items-center gap-3">
+          <input data-testid="visual-edit-date" value={v.date_label ?? ""} placeholder={post.meta?.date_label || "NOVEMBRE 2026"}
+            disabled={Boolean(v.hide_date)}
+            onChange={(e) => updateVisual({ date_label: e.target.value })} className={`${inputCls} disabled:opacity-40`} />
+          <label className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-forsides-ink">
+            <input type="checkbox" data-testid="visual-edit-show-date" checked={!v.hide_date}
+              onChange={(e) => updateVisual({ hide_date: !e.target.checked })} /> Afficher la date
+          </label>
+        </div>
       </div>
     </div>
     {extraSources.map((src, i) => (
@@ -514,9 +553,9 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               </div>
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
               {posBar(`k:${activeKind}`)}
-              {sourceToggle(activeKind, activeKind === "cover" || activeKind === "essential")}
+              {showList(activeKind)}
               {extraOf(activeKind) ? extraEditor(extraOf(activeKind)) : carouselPage[activeKind]}
-              {activeKind !== "cover" && blocksEditor(activeKind)}
+              {blocksEditor(activeKind)}
               {extras.length < 6 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-xs" data-testid="visual-add-page">
                   <span className="font-semibold text-forsides-ink">Ajouter une page après celle-ci :</span>

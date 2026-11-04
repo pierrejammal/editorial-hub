@@ -44,6 +44,14 @@ function endShift(ctx) {
   SHIFTED = false;
 }
 
+// elements removed by the user on a page ("Ce qui s'affiche sur cette page"): visual.hidden["data.chart"] = true…
+const isHidden = (d, key) => Boolean((d.v.hidden || {})[key]);
+// page title, unless removed (then the content moves up)
+function heading(ctx, d, text, y) {
+  if (isHidden(d, `${CUR_KIND}.heading`) || !String(text || "").trim()) return -70;
+  return bigLabel(ctx, text, y);
+}
+
 const blocksOf = (d) => {
   const all = (d.v.page_blocks || {})[CUR_KIND];
   return Array.isArray(all) ? all.filter((b) => b && (clean(b.text) || clean(b.value))).slice(0, 4) : [];
@@ -249,7 +257,9 @@ function coverPage(ctx, d, images, n, total) {
   let srcH = withSrc ? sourceBlock(ctx, d, PAD, 0, MAXW, srcPx, false) : 0;
   while (srcH > 330 && srcPx > 20) { srcPx -= 2; srcH = sourceBlock(ctx, d, PAD, 0, MAXW, srcPx, false); }
   // the title area ends above the sources (several long sources make the title a little smaller)
-  const area = { top: Math.max(top + 140, 360), bottom: Math.min(VH - 360, VH - 190 - (withSrc ? srcH + 64 : 0)) };
+  const res = blocksReserve(ctx, d);
+  const titleOn = !isHidden(d, "cover.title");
+  const area = { top: Math.max(top + 140, 360), bottom: Math.min(VH - 360, VH - 190 - (withSrc ? srcH + 64 : 0)) - res };
   ctx.fillStyle = BORDEAUX;
   let px = Math.round(84 * pageScale(d, "cover"));
   const fam = titleFontFamily();
@@ -263,9 +273,13 @@ function coverPage(ctx, d, images, n, total) {
   const maxLines = Math.max(1, Math.floor((area.bottom - area.top) / lh));
   const lines = Math.min(maxLines, wrapWords(ctx, d.title, MAXW).length);
   const y0 = area.top + Math.max(0, ((area.bottom - area.top) - lines * lh) / 2) + px;
-  const yEnd = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, maxLines);
-  drawRule(ctx, yEnd + 10);
+  let yEnd = area.top;
+  if (titleOn) {
+    yEnd = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, maxLines);
+    drawRule(ctx, yEnd + 10);
+  }
   if (withSrc) sourceBlock(ctx, d, PAD, yEnd + 40, MAXW, srcPx, true);
+  drawPageBlocks(ctx, d, VH - 150);
   swipeHint(ctx);
   pageCounter(ctx, n, total);
 }
@@ -275,14 +289,15 @@ function essentialPage(ctx, d, images, n, total) {
   const k = pageScale(d, "essential");
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
-  top += bigLabel(ctx, L.essential, top + 90);
+  top += heading(ctx, d, L.essential, top + 90);
   const areaTop = top + 150;
   const RB = VH - 170;
   const areaBottom = RB - blocksReserve(ctx, d);
-  const fig = clean(d.v.key_figure_value);
-  const figLabel = clean(d.v.key_figure_label);
+  const fig = isHidden(d, "essential.figure") ? "" : clean(d.v.key_figure_value);
+  const figLabel = isHidden(d, "essential.figure") ? "" : clean(d.v.key_figure_label);
   // short facts not already shown on the "chiffres" page
-  const facts = d.factsFree ? (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3) : [];
+  const facts = d.factsFree && !isHidden(d, "essential.facts") ? (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3) : [];
+  const summaryOn = !isHidden(d, "essential.summary");
   const src = showSource(d, "essential") ? sourceLine(d) : "";
 
   // measure everything at a given summary size, then pick the largest size that fits
@@ -302,7 +317,7 @@ function essentialPage(ctx, d, images, n, total) {
       }
       h += 50;
     }
-    if (d.content.summary) {
+    if (d.content.summary && summaryOn) {
       ctx.font = `400 ${sumPx}px Outfit`;
       const lh = Math.round(sumPx * 1.38);
       const lines = wrapWords(ctx, d.content.summary, MAXW).length;
@@ -368,16 +383,17 @@ function dataPage(ctx, d, images, n, total) {
   if (hasChart(d.post)) {
     // chart sized to what it needs, its reading sentence in full, then the key facts;
     // the whole block is centred so the page is never half empty
-    top += bigLabel(ctx, L.figures, top + 90);
+    top += heading(ctx, d, L.figures, top + 90);
     const areaTop = top + 135;
     const areaBottom = VH - 170 - res;
-    const ctitle = clean(chart.title).toUpperCase();
-    const note = clean(chart.note);
-    const facts = (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3);
+    const ctitle = isHidden(d, "data.chartTitle") ? "" : clean(chart.title).toUpperCase();
+    const note = isHidden(d, "data.note") ? "" : clean(chart.note);
+    const facts = isHidden(d, "data.facts") ? [] : (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3);
+    const chartOn = !isHidden(d, "data.chart");
     const vertical = chart.type !== "pie" && chart.items.every((i) => /^(\d{4}|[TSQH]\d[\s-]?\d{2,4}|\d{4}[\s-]\d{2,4})$/i.test(String(i.label).trim()));
     // few bars → taller rows so the chart fills the page instead of leaving a hole
     const rowMax = chart.items.length <= 3 ? 190 : 150;
-    const natural = chart.type === "pie" || vertical ? 600 : Math.max(260, chart.items.length * rowMax);
+    const natural = !chartOn ? 0 : chart.type === "pie" || vertical ? 600 : Math.max(260, chart.items.length * rowMax);
     const avail = areaBottom - areaTop;
 
     const measure = (notePx, chartH, factPx) => {
@@ -400,7 +416,7 @@ function dataPage(ctx, d, images, n, total) {
     let chartH = natural;
     let m = measure(notePx, chartH, factPx);
     while (m.h > avail && notePx > 22) { notePx -= 2; m = measure(notePx, chartH, factPx); }
-    while (m.h > avail && chartH > 220) { chartH -= 20; m = measure(notePx, chartH, factPx); }
+    while (chartOn && m.h > avail && chartH > 220) { chartH -= 20; m = measure(notePx, chartH, factPx); }
     // room left: enlarge the reading sentence and the facts a little
     while (notePx < 40 * k && measure(notePx + 2, chartH, factPx).h <= avail) { notePx += 2; m = measure(notePx, chartH, factPx); }
     while (factPx < 38 * k && measure(notePx, chartH, factPx + 2).h <= avail) { factPx += 2; m = measure(notePx, chartH, factPx); }
@@ -419,7 +435,8 @@ function dataPage(ctx, d, images, n, total) {
       ctx.letterSpacing = prev || "0px";
       y += m.tl * 32 + 26;
     }
-    if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, MAXW, chartH);
+    if (!chartOn) { /* chart removed by the user */ }
+    else if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, MAXW, chartH);
     else drawBarChart(ctx, chart, PAD, y, MAXW, chartH, { rowMax });
     y += chartH;
     if (m.nl) {
@@ -441,10 +458,10 @@ function dataPage(ctx, d, images, n, total) {
       });
     }
   } else {
-    top += bigLabel(ctx, L.keyFigures, top + 90);
+    top += heading(ctx, d, L.keyFigures, top + 90);
     let y = top + 190;
-    const items = (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 4);
-    const date = clean(d.v.important_date);
+    const items = isHidden(d, "data.facts") ? [] : (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 4);
+    const date = isHidden(d, "data.date") ? "" : clean(d.v.important_date);
     if (date) {
       ctx.fillStyle = CORAL;
       const px = fitFontSize(ctx, date, "Anton", 130, MAXW, 60);
@@ -469,11 +486,11 @@ function dataPage(ctx, d, images, n, total) {
   swipeHint(ctx);
 }
 
-function pointsPage(ctx, d, images, n, total, points, heading) {
+function pointsPage(ctx, d, images, n, total, points, pageTitle) {
   const k = pageScale(d, "points");
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
-  top += bigLabel(ctx, heading, top + 90);
+  top += heading(ctx, d, pageTitle, top + 90);
   let y = top + 180;
   const res = blocksReserve(ctx, d);
   const per = (VH - 220 - res - y) / points.length;
@@ -502,16 +519,18 @@ function pointsPage(ctx, d, images, n, total, points, heading) {
 function takeawayPage(ctx, d, images, n, total) {
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
-  top += bigLabel(ctx, L.takeaway, top + 90);
+  top += heading(ctx, d, L.takeaway, top + 90);
   // quotes are drawn by the page itself (opening and closing), so strip any typed in the text
-  const text = String(d.takeaway || "").replace(/^[\s«»“”"']+|[\s«»“”"']+$/g, "");
-  const area = { top: top + 175, bottom: VH - 440 - blocksReserve(ctx, d) };
+  const text = isHidden(d, "takeaway.quote") ? "" : String(d.takeaway || "").replace(/^[\s«»“”"']+|[\s«»“”"']+$/g, "");
+  const ctaOn = !isHidden(d, "takeaway.cta");
+  const area = { top: top + 175, bottom: (ctaOn ? VH - 440 : VH - 200) - blocksReserve(ctx, d) };
   const QH = 120; // room taken by each quote mark
   const b = fitBlock(ctx, text, 700, Math.round(64 * pageScale(d, "takeaway")), 30, area.bottom - area.top - QH * 2, 1.25);
   const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
   const blockH = QH + lines * b.lh + QH;
   // the quote + text block is centred in the free space, so there is no hole under the opening quote
   const y0 = area.top + Math.max(0, (area.bottom - area.top - blockH) / 2);
+  if (text) {
   ctx.fillStyle = BRICK;
   ctx.font = "220px Anton";
   ctx.fillText("“", PAD - 10, y0 + 175);
@@ -523,8 +542,13 @@ function takeawayPage(ctx, d, images, n, total) {
   ctx.textAlign = "right";
   ctx.fillText("”", VW - PAD + 10, y0 + QH + lines * b.lh + 175);
   ctx.textAlign = "left";
-  drawPageBlocks(ctx, d, VH - 420);
+  }
+  drawPageBlocks(ctx, d, ctaOn ? VH - 420 : VH - 180);
   endShift(ctx); // the closing question stays in place
+  if (!ctaOn) {
+    if (!isHidden(d, "takeaway.signature")) drawSignature(ctx);
+    return;
+  }
   drawRule(ctx, VH - 400);
   // closing texts wrap (2 lines max each) instead of running off the page
   ctx.fillStyle = INK;
@@ -533,7 +557,7 @@ function takeawayPage(ctx, d, images, n, total) {
   ctx.fillStyle = "#4a3a36";
   ctx.font = "400 30px Outfit";
   drawParagraph(ctx, clean(d.v.cta_text) || L.cta, PAD, Math.max(VH - 270, qEnd + 8), MAXW, 38, false, 2);
-  drawSignature(ctx);
+  if (!isHidden(d, "takeaway.signature")) drawSignature(ctx);
 }
 
 // Page added by the user ("Ajouter une page"): texte, chiffre clé, citation or liste
@@ -542,7 +566,7 @@ function extraPage(ctx, d, images, n, total, x) {
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
   const title = clean(x.title);
-  if (title) top += bigLabel(ctx, title, top + 90);
+  if (title) top += heading(ctx, d, title, top + 90);
   const areaTop = top + (title ? 170 : 90);
   const areaBottom = VH - 200 - blocksReserve(ctx, d);
   const avail = areaBottom - areaTop;

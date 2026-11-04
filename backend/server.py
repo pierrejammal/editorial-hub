@@ -1226,7 +1226,7 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
                       "labels", "carousel_labels", "source_label", "date_label",
                       "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks",
-                      "extra_sources", "page_source"}
+                      "extra_sources", "page_source", "hidden"}
 EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
@@ -1388,7 +1388,10 @@ Ce que tu peux modifier:
   {{"A"|"B"|"C": n, "k:<page>": n}} (pages du carrousel: "k:cover", "k:essential", "k:data", "k:points", "k:takeaway",
   "k:extra-<id>"). Renvoie l'objet complet.
 - parties ajoutées DANS une page du carrousel (sous son contenu): visual.page_blocks {{"<page>": [{{"id", "type":
-  "text"|"figure"|"quote"|"list", "title": "sous-titre", "text", "value", "label"}}]}} (max 4 par page, pas sur "cover").
+  "text"|"figure"|"quote"|"list", "title": "sous-titre", "text", "value", "label"}}]}} (max 4 par page, couverture comprise).
+- retirer/remettre un élément d'une page du carrousel: visual.hidden {{"cover.title", "<page>.heading", "essential.summary",
+  "essential.figure", "essential.facts", "data.chartTitle", "data.chart", "data.note", "data.date", "data.facts",
+  "takeaway.quote", "takeaway.cta", "takeaway.signature": true (retiré) / false (affiché)}}; la date: visual.hide_date.
 - un retour à la ligne voulu s'écrit \\n dans le texte; une partie « chiffre clé » dans les points = point avec "value".
 Ce que tu NE peux PAS modifier: la position exacte des éléments, les marges et espacements (mise en page automatique).
 (« Source » passe AUTOMATIQUEMENT au pluriel « Sources » quand le post a plusieurs sources.)
@@ -1457,6 +1460,13 @@ Renvoie STRICTEMENT ce JSON:
         vis["extra_sources"] = [str(x)[:120] for x in es[:5] if isinstance(x, str)] if isinstance(es, list) else None
         if vis["extra_sources"] is None:
             vis.pop("extra_sources")
+    if "hidden" in vis:
+        hd = vis["hidden"]
+        if isinstance(hd, dict):
+            vis["hidden"] = {**((post.get("visual") or {}).get("hidden") or {}),
+                             **{str(k)[:60]: v for k, v in hd.items() if isinstance(v, bool)}}
+        else:
+            vis.pop("hidden")
     if "page_source" in vis:
         ps = vis["page_source"]
         if isinstance(ps, dict):
@@ -1483,7 +1493,7 @@ Renvoie STRICTEMENT ce JSON:
                 str(k)[:40]: [{**{f: str(b.get(f, ""))[:600] for f in EXTRA_PAGE_FIELDS if f != "after"},
                                "id": str(b.get("id") or uuid.uuid4().hex[:6])[:20]}
                               for b in lst[:4] if isinstance(b, dict) and b.get("type") in ("text", "figure", "quote", "list")]
-                for k, lst in pb.items() if isinstance(lst, list) and k != "cover"}}
+                for k, lst in pb.items() if isinstance(lst, list)}}
         else:
             vis.pop("page_blocks")
     if "extra_pages" in vis:
