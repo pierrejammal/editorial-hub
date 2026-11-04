@@ -80,11 +80,11 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   };
   const sourceFields = (
     <div className="space-y-2">
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-2">
       <div>
         <Label>Source affichée</Label>
-        <input data-testid="visual-edit-source" value={v.source_label ?? ""} placeholder={post.meta?.source || "Nom de la source"}
-          onChange={(e) => updateVisual({ source_label: e.target.value })} className={inputCls} />
+        <textarea rows={2} data-testid="visual-edit-source" value={v.source_label ?? ""} placeholder={post.meta?.source || "Nom de la source"}
+          onChange={(e) => updateVisual({ source_label: e.target.value })} className={`${inputCls} resize-y`} />
       </div>
       <div>
         <Label>Date affichée</Label>
@@ -94,8 +94,8 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     </div>
     {extraSources.map((src, i) => (
       <div key={i} className="flex items-center gap-2">
-        <input data-testid={`visual-extra-source-${i}`} value={src} placeholder="Autre source (ex. Légifrance)"
-          onChange={(e) => setExtraSources(extraSources.map((x, k) => (k === i ? e.target.value : x)))} className={inputCls} />
+        <textarea rows={2} data-testid={`visual-extra-source-${i}`} value={src} placeholder="Autre source (ex. Légifrance)"
+          onChange={(e) => setExtraSources(extraSources.map((x, k) => (k === i ? e.target.value : x)))} className={`${inputCls} resize-y`} />
         <button type="button" aria-label="Retirer cette source" onClick={() => setExtraSources(extraSources.filter((_, k) => k !== i))}
           className="rounded-lg px-2 text-slate-400 hover:text-forsides-red"><Trash2 className="h-4 w-4" /></button>
       </div>

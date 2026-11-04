@@ -100,15 +100,50 @@ const showSource = (d, kind) => {
 };
 const sourceLine = (d) => (d.content.source
   ? `${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}` : "");
+// Source(s) block: one source → "Source : X · date"; several → "Sources · date" then one source per line.
+// Long names wrap (up to 3 lines each) instead of being cut. Returns its height (draw = false only measures).
+function sourceBlock(ctx, d, x, y, maxW, px, draw) {
+  const list = d.content.sourceList && d.content.sourceList.length ? d.content.sourceList : (d.content.source ? [d.content.source] : []);
+  if (!list.length) return 0;
+  const date = d.content.date ? d.content.date.toLowerCase() : "";
+  const lh = Math.round(px * 1.32);
+  let h = 0;
+  ctx.fillStyle = "#4a3a36";
+  if (list.length === 1) {
+    ctx.font = `500 ${px}px Outfit`;
+    const t = `${L.source} ${list[0]}${date ? " · " + date : ""}`;
+    const n = Math.min(3, wrapWords(ctx, t, maxW).length);
+    if (draw) drawParagraph(ctx, t, x, y + px, maxW, lh, false, 3);
+    return n * lh;
+  }
+  ctx.font = `700 ${px}px Outfit`;
+  const head = `${L.sources.replace(/\s*:\s*$/, "")}${date ? " · " + date : ""}`;
+  if (draw) ctx.fillText(head, x, y + px);
+  h += lh + 4;
+  list.forEach((src) => {
+    ctx.font = `500 ${px}px Outfit`;
+    const n = Math.min(3, wrapWords(ctx, src, maxW - 28).length);
+    if (draw) {
+      ctx.fillStyle = BRICK;
+      ctx.fillRect(x, y + h + px * 0.45, 10, 10);
+      ctx.fillStyle = "#4a3a36";
+      drawParagraph(ctx, src, x + 28, y + h + px, maxW - 28, lh, false, 3);
+    }
+    h += n * lh + 6;
+  });
+  return h;
+}
+
 // small source line at the bottom of the other pages (when switched on)
 function footSource(ctx, d, kind) {
   if (kind === "cover" || kind === "essential" || !showSource(d, kind)) return;
   const line = sourceLine(d);
   if (!line) return;
   ctx.fillStyle = "#4a3a36";
-  ctx.font = "500 24px Outfit";
+  ctx.font = "500 20px Outfit";
   ctx.textAlign = "left";
-  ctx.fillText(ellipsize(ctx, line, MAXW), PAD, kind === "takeaway" ? VH - 150 : VH - 125);
+  const two = wrapWords(ctx, line, MAXW).length > 1;
+  drawParagraph(ctx, line, PAD, (kind === "takeaway" ? VH - 150 : VH - 125) - (two ? 26 : 0), MAXW, 26, false, 2);
 }
 
 function blocksReserve(ctx, d) {
@@ -209,7 +244,12 @@ function bigLabel(ctx, text, y) {
 function coverPage(ctx, d, images, n, total) {
   const top = drawHeader(ctx, d.post, images);
   beginShift(ctx, d);
-  const area = { top: Math.max(top + 140, 360), bottom: VH - 360 };
+  const withSrc = d.content.source && showSource(d, "cover");
+  let srcPx = 30;
+  let srcH = withSrc ? sourceBlock(ctx, d, PAD, 0, MAXW, srcPx, false) : 0;
+  while (srcH > 330 && srcPx > 20) { srcPx -= 2; srcH = sourceBlock(ctx, d, PAD, 0, MAXW, srcPx, false); }
+  // the title area ends above the sources (several long sources make the title a little smaller)
+  const area = { top: Math.max(top + 140, 360), bottom: Math.min(VH - 360, VH - 190 - (withSrc ? srcH + 64 : 0)) };
   ctx.fillStyle = BORDEAUX;
   let px = Math.round(84 * pageScale(d, "cover"));
   const fam = titleFontFamily();
@@ -225,11 +265,7 @@ function coverPage(ctx, d, images, n, total) {
   const y0 = area.top + Math.max(0, ((area.bottom - area.top) - lines * lh) / 2) + px;
   const yEnd = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, maxLines);
   drawRule(ctx, yEnd + 10);
-  if (d.content.source && showSource(d, "cover")) {
-    ctx.fillStyle = "#4a3a36";
-    ctx.font = "500 30px Outfit";
-    drawParagraph(ctx, `${d.content.multi ? L.sources : L.source} ${d.content.source}${d.content.date ? " · " + d.content.date.toLowerCase() : ""}`, PAD, yEnd + 74, MAXW, 40, false, 2);
-  }
+  if (withSrc) sourceBlock(ctx, d, PAD, yEnd + 40, MAXW, srcPx, true);
   swipeHint(ctx);
   pageCounter(ctx, n, total);
 }
@@ -279,7 +315,7 @@ function essentialPage(ctx, d, images, n, total) {
       parts.push({ k: "facts", h: 60 + fh });
       h += 60 + fh;
     }
-    if (src) { parts.push({ k: "src", h: 90 }); h += 90; }
+    if (src) { const sh = 70 + sourceBlock(ctx, d, PAD, 0, MAXW, 24, false); parts.push({ k: "src", h: sh }); h += sh; }
     return { h, parts };
   };
   let sumPx = Math.round(64 * k);
@@ -315,9 +351,7 @@ function essentialPage(ctx, d, images, n, total) {
       });
     } else if (p.k === "src") {
       drawRule(ctx, y + 40);
-      ctx.fillStyle = "#4a3a36";
-      ctx.font = "500 28px Outfit";
-      drawParagraph(ctx, src, PAD, y + 90, MAXW, 36, false, 2);
+      sourceBlock(ctx, d, PAD, y + 62, MAXW, 24, true);
       y += p.h;
     }
   });

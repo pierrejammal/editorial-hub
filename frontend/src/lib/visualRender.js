@@ -385,11 +385,12 @@ export function resolveContent(post, title) {
 
   // "Source affichée" edited by hand wins; sources added by hand are listed after it
   const extraSrc = (Array.isArray(v.extra_sources) ? v.extra_sources : []).map(clean).filter(Boolean);
-  const source = [clean(v.source_label) || clean(m.source), ...extraSrc].filter(Boolean).join(" / ");
+  const sourceList = [clean(v.source_label) || clean(m.source), ...extraSrc].filter(Boolean);
+  const source = sourceList.join(" / ");
   const srcTitle = pick(m.source_title, post.sources?.[0]?.title, m.topic);
   // several sources ("DREES / Légifrance", multi-link analysis) → "Sources" in the plural
   const multi = Boolean(m.multi_source) || (post.sources || []).length > 1 || /\s[/&+]\s|,|\set\s|\sand\s/i.test(source);
-  const auto = { multi, summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: v.hide_date ? "" : clean(v.date_label) || clean(m.date_label) };
+  const auto = { sourceList, multi, summary, points, source, sourceTitle: srcTitle !== source ? srcTitle : "", date: v.hide_date ? "" : clean(v.date_label) || clean(m.date_label) };
 
   // Text the user edited by hand in "Modifier le texte du visuel" always wins over the automatic choice.
   const cu = v.custom || {};
