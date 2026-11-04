@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { resolveContent, hasChart } from "@/lib/visualRender";
-import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown } from "lucide-react";
+import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from "lucide-react";
 
 const inputCls =
   "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20";
@@ -48,6 +48,12 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   const points = Array.isArray(custom.points) ? custom.points : shown.points.map((p) => ({ ...p }));
 
   const setCustom = (patch) => updateVisual({ custom: { summary, points, ...custom, ...patch } });
+  const swapPoints = (a, b) => {
+    if (b === undefined || b < 0) return;
+    const next = [...points];
+    [next[a], next[b]] = [next[b], next[a]];
+    setCustom({ points: next });
+  };
   const setPoint = (i, patch) => setCustom({ points: points.map((p, k) => (k === i ? { ...p, ...patch } : p)) });
   const setChart = (patch) => updateVisual({ chart: { ...chart, ...patch } });
   const setItem = (i, patch) => setChart({ items: chart.items.map((it, k) => (k === i ? { ...it, ...patch } : it)) });
@@ -192,6 +198,18 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               <input data-testid={`visual-edit-point-label-${i}`} value={points[i].label}
                 onChange={(e) => setPoint(i, { label: e.target.value })}
                 className={`${inputCls} py-1.5 text-xs font-semibold uppercase`} />
+              {idx.length > 1 && (
+                <>
+                  <button type="button" aria-label="Monter ce point" disabled={idx.indexOf(i) === 0}
+                    onClick={() => swapPoints(i, idx[idx.indexOf(i) - 1])} className="px-1 text-slate-400 hover:text-forsides-red disabled:opacity-30">
+                    <ArrowUp className="h-4 w-4" />
+                  </button>
+                  <button type="button" aria-label="Descendre ce point" disabled={idx.indexOf(i) === idx.length - 1}
+                    onClick={() => swapPoints(i, idx[idx.indexOf(i) + 1])} className="px-1 text-slate-400 hover:text-forsides-red disabled:opacity-30">
+                    <ArrowDown className="h-4 w-4" />
+                  </button>
+                </>
+              )}
               <button type="button" onClick={() => setCustom({ points: points.filter((_, k) => k !== i) })}
                 aria-label="Supprimer ce point" className="rounded-lg px-2 text-slate-400 hover:text-forsides-red">
                 <Trash2 className="h-4 w-4" />
@@ -348,6 +366,14 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                 </button>
               ))}
               <span className="ml-auto flex items-center gap-1">
+                <span className="mr-1 flex overflow-hidden rounded-full ring-1 ring-slate-200">
+                  {[["top", "En haut"], ["bottom", "En bas"]].map(([pv, pl]) => (
+                    <button key={pv} type="button" data-testid={`visual-block-pos-${pv}-${i}`} onClick={() => setB(i, { pos: pv })}
+                      className={`px-2 py-0.5 text-[11px] font-medium ${(b.pos === "top" ? "top" : "bottom") === pv ? "bg-forsides-red text-white" : "bg-white text-forsides-slate"}`}>
+                      {pl}
+                    </button>
+                  ))}
+                </span>
                 <button type="button" aria-label="Monter" onClick={() => move(i, -1)} className="p-1 text-slate-400 hover:text-forsides-red"><ArrowUp className="h-3.5 w-3.5" /></button>
                 <button type="button" aria-label="Descendre" onClick={() => move(i, 1)} className="p-1 text-slate-400 hover:text-forsides-red"><ArrowDown className="h-3.5 w-3.5" /></button>
                 <button type="button" aria-label="Supprimer cette partie" onClick={() => save(list.filter((_, k) => k !== i))}
@@ -410,6 +436,16 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     const after = String(activeKind).startsWith("extra-") ? "auto" : activeKind === "takeaway" ? "end" : activeKind;
     updateVisual({ extra_pages: [...extras, { id, type, title: def.title, text: "", value: "", label: "", after }] });
     setPendingKind(`extra-${id}`);
+  };
+  // move the current page left / right in the carousel
+  const movePage = (dir) => {
+    const order = [...tabs];
+    const i = order.indexOf(activeKind);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    updateVisual({ page_order: order });
+    setPendingKind(activeKind); // keep showing the page that was moved
   };
   const extraOf = (kind) => extras.find((x) => `extra-${x.id}` === kind);
   const tabLabel = (k) => {
@@ -538,6 +574,22 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                     {carKinds.indexOf(k) >= 0 ? `${carKinds.indexOf(k) + 1}. ` : ""}{tabLabel(k)}
                   </button>
                 ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="visual-page-move">
+                <span className="font-medium text-forsides-ink">Déplacer cette page :</span>
+                <button type="button" aria-label="Page plus tôt" data-testid="visual-page-left" disabled={tabs.indexOf(activeKind) <= 0} onClick={() => movePage(-1)}
+                  className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200 disabled:opacity-40">
+                  <ChevronLeft className="h-3.5 w-3.5" /> Avant
+                </button>
+                <button type="button" aria-label="Page plus tard" data-testid="visual-page-right" disabled={tabs.indexOf(activeKind) >= tabs.length - 1} onClick={() => movePage(1)}
+                  className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200 disabled:opacity-40">
+                  Après <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+                {Array.isArray(v.page_order) && (
+                  <button type="button" onClick={() => updateVisual({ page_order: null })} className="text-forsides-slate hover:text-forsides-red">
+                    Ordre d'origine
+                  </button>
+                )}
               </div>
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
               {posBar(`k:${activeKind}`)}

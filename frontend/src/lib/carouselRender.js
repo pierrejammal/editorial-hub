@@ -52,9 +52,10 @@ function heading(ctx, d, text, y) {
   return bigLabel(ctx, text, y);
 }
 
-const blocksOf = (d) => {
+const blocksOf = (d, pos = "bottom") => {
   const all = (d.v.page_blocks || {})[CUR_KIND];
-  return Array.isArray(all) ? all.filter((b) => b && (clean(b.text) || clean(b.value))).slice(0, 4) : [];
+  return Array.isArray(all)
+    ? all.filter((b) => b && (clean(b.text) || clean(b.value)) && (b.pos === "top" ? "top" : "bottom") === pos).slice(0, 4) : [];
 };
 // one section; returns its height (draw = false only measures)
 function drawBlock(ctx, b, y, k, draw) {
@@ -154,17 +155,33 @@ function footSource(ctx, d, kind) {
   drawParagraph(ctx, line, PAD, (kind === "takeaway" ? VH - 150 : VH - 125) - (two ? 26 : 0), MAXW, 26, false, 2);
 }
 
+// sections are made smaller when they would take too much of the page
+function blocksFit(ctx, d, pos) {
+  const blocks = blocksOf(d, pos);
+  if (!blocks.length) return { h: 0, k: 1, blocks };
+  let k = pageScale(d, CUR_KIND);
+  const measure = () => 40 + blocks.reduce((h, b) => h + drawBlock(ctx, b, 0, k, false) + BLOCK_GAP, 0);
+  let h = measure();
+  while (h > 460 && k > 0.55) { k -= 0.05; h = measure(); }
+  return { h, k, blocks };
+}
 function blocksReserve(ctx, d) {
-  const blocks = blocksOf(d);
+  return blocksFit(ctx, d, "bottom").h;
+}
+// sections placed at the top of the page (under its title); returns the room they take
+function drawTopBlocks(ctx, d, y0) {
+  const { h, k, blocks } = blocksFit(ctx, d, "top");
   if (!blocks.length) return 0;
-  const k = pageScale(d, CUR_KIND);
-  return 40 + blocks.reduce((h, b) => h + drawBlock(ctx, b, 0, k, false) + BLOCK_GAP, 0);
+  let y = y0 + 34; // breathing room under the page title
+  blocks.forEach((b) => { y += drawBlock(ctx, b, y, k, true) + BLOCK_GAP; });
+  ctx.fillStyle = DOT;
+  ctx.fillRect(PAD, y - 10, MAXW, 2);
+  return h + 34;
 }
 function drawPageBlocks(ctx, d, bottom) {
-  const blocks = blocksOf(d);
+  const { h, k, blocks } = blocksFit(ctx, d, "bottom");
   if (!blocks.length) return;
-  const k = pageScale(d, CUR_KIND);
-  let y = bottom - blocksReserve(ctx, d) + 20;
+  let y = bottom - h + 20;
   ctx.fillStyle = DOT;
   ctx.fillRect(PAD, y, MAXW, 2);
   y += 30;
@@ -260,6 +277,7 @@ function coverPage(ctx, d, images, n, total) {
   const res = blocksReserve(ctx, d);
   const titleOn = !isHidden(d, "cover.title");
   const area = { top: Math.max(top + 140, 360), bottom: Math.min(VH - 360, VH - 190 - (withSrc ? srcH + 64 : 0)) - res };
+  area.top += drawTopBlocks(ctx, d, Math.max(top + 60, 280));
   ctx.fillStyle = BORDEAUX;
   let px = Math.round(84 * pageScale(d, "cover"));
   const fam = titleFontFamily();
@@ -290,7 +308,7 @@ function essentialPage(ctx, d, images, n, total) {
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
   top += heading(ctx, d, L.essential, top + 90);
-  const areaTop = top + 150;
+  const areaTop = top + 150 + drawTopBlocks(ctx, d, top + 130);
   const RB = VH - 170;
   const areaBottom = RB - blocksReserve(ctx, d);
   const fig = isHidden(d, "essential.figure") ? "" : clean(d.v.key_figure_value);
@@ -337,6 +355,9 @@ function essentialPage(ctx, d, images, n, total) {
   let lay = layout(sumPx);
   while (sumPx > 30 && lay.h > areaBottom - areaTop) { sumPx -= 2; lay = layout(sumPx); }
 
+  const fitE = lay.h > areaBottom - areaTop ? Math.max(0.5, (areaBottom - areaTop) / lay.h) : 1;
+  ctx.save();
+  if (fitE < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitE, fitE); ctx.translate(-PAD, -areaTop); }
   let y = areaTop + Math.max(0, (areaBottom - areaTop - lay.h) / 2); // centred block
   lay.parts.forEach((p) => {
     if (p.k === "fig") {
@@ -370,6 +391,7 @@ function essentialPage(ctx, d, images, n, total) {
       y += p.h;
     }
   });
+  ctx.restore();
   drawPageBlocks(ctx, d, RB);
   swipeHint(ctx);
 }
@@ -384,7 +406,7 @@ function dataPage(ctx, d, images, n, total) {
     // chart sized to what it needs, its reading sentence in full, then the key facts;
     // the whole block is centred so the page is never half empty
     top += heading(ctx, d, L.figures, top + 90);
-    const areaTop = top + 135;
+    const areaTop = top + 135 + drawTopBlocks(ctx, d, top + 125);
     const areaBottom = VH - 170 - res;
     const ctitle = isHidden(d, "data.chartTitle") ? "" : clean(chart.title).toUpperCase();
     const note = isHidden(d, "data.note") ? "" : clean(chart.note);
@@ -425,6 +447,10 @@ function dataPage(ctx, d, images, n, total) {
     const gaps = (m.nl ? 1 : 0) + (facts.length ? 1 : 0);
     const gapExtra = gaps ? Math.min(90, free / (gaps + 1)) : 0;
 
+    // still too tall (many facts + added sections): the whole block is scaled down to fit
+    const fitF = m.h > avail ? Math.max(0.5, avail / m.h) : 1;
+    ctx.save();
+    if (fitF < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitF, fitF); ctx.translate(-PAD, -areaTop); }
     let y = areaTop;
     if (m.tl) {
       ctx.fillStyle = "#8a6a62";
@@ -457,9 +483,10 @@ function dataPage(ctx, d, images, n, total) {
         y = end - m.flh + 20 + 14;
       });
     }
+    ctx.restore();
   } else {
     top += heading(ctx, d, L.keyFigures, top + 90);
-    let y = top + 190;
+    let y = top + 190 + drawTopBlocks(ctx, d, top + 140);
     const items = isHidden(d, "data.facts") ? [] : (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 4);
     const date = isHidden(d, "data.date") ? "" : clean(d.v.important_date);
     if (date) {
@@ -491,7 +518,7 @@ function pointsPage(ctx, d, images, n, total, points, pageTitle) {
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
   top += heading(ctx, d, pageTitle, top + 90);
-  let y = top + 180;
+  let y = top + 180 + drawTopBlocks(ctx, d, top + 140);
   const res = blocksReserve(ctx, d);
   const per = (VH - 220 - res - y) / points.length;
   points.forEach((p, i) => {
@@ -524,6 +551,7 @@ function takeawayPage(ctx, d, images, n, total) {
   const text = isHidden(d, "takeaway.quote") ? "" : String(d.takeaway || "").replace(/^[\s«»“”"']+|[\s«»“”"']+$/g, "");
   const ctaOn = !isHidden(d, "takeaway.cta");
   const area = { top: top + 175, bottom: (ctaOn ? VH - 440 : VH - 200) - blocksReserve(ctx, d) };
+  area.top += drawTopBlocks(ctx, d, top + 140);
   const QH = 120; // room taken by each quote mark
   const b = fitBlock(ctx, text, 700, Math.round(64 * pageScale(d, "takeaway")), 30, area.bottom - area.top - QH * 2, 1.25);
   const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
@@ -567,7 +595,7 @@ function extraPage(ctx, d, images, n, total, x) {
   beginShift(ctx, d);
   const title = clean(x.title);
   if (title) top += heading(ctx, d, title, top + 90);
-  const areaTop = top + (title ? 170 : 90);
+  const areaTop = top + (title ? 170 : 90) + drawTopBlocks(ctx, d, top + (title ? 150 : 80));
   const areaBottom = VH - 200 - blocksReserve(ctx, d);
   const avail = areaBottom - areaTop;
   const text = clean(x.text);
@@ -681,6 +709,12 @@ export function planCarousel(post) {
     }
     pages.splice(at, 0, page);
   });
+  // order chosen by the user (◀ ▶ in the editor); pages not listed keep their place at the end
+  const order = Array.isArray(v.page_order) ? v.page_order : null;
+  if (order && order.length) {
+    const rank = (kind) => { const i = order.indexOf(kind); return i < 0 ? 999 : i; };
+    pages.sort((a, b) => rank(a.kind) - rank(b.kind)); // stable: several "Décryptage" pages stay in order
+  }
   const out = pages.slice(0, 12);
   out.data = d; // shared page data (used for the per-page source line)
   return out;
