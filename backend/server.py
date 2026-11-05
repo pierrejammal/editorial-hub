@@ -1392,6 +1392,10 @@ Ce que tu peux modifier:
 - taille et position de CHAQUE élément d'une page du carrousel: visual.el {{"<page>:<élément>": {{"s": 0.5 à 1.6, "y": -300 à 300 (vertical), "x": -400 à 400 (horizontal)}}}}
   décorations aussi: <page>:banner, <page>:logo, cover:date, cover:sourceLogo, <page>:pageNum, <page>:swipe, points:separators,
   takeaway:quoteOpen|quoteClose|rule|signature (masquer: visual.hidden "<page>.<élément>": true)
+  Les formats Analyse / Data / Graphique fonctionnent pareil avec "A", "B" ou "C" à la place de la page: éléments title, summary,
+  pt-<n>, figure, deadline, facts, chart, chartTitle, note, atSource, source, banner, date, logo, sourceLogo, signature
+  (ex. visual.el {{"B:figure": {{"s": 0.9}}}}, visual.hidden {{"A.signature": true}}, visual.page_blocks {{"A": [...]}},
+  visual.lines_after {{"C": ["chart"]}}). Dans ces formats, les textes larges ne s'agrandissent pas au-delà de 1 (utiliser visual.text_scale).
   éléments: cover:title, cover:source, <page>:heading, essential:figure|summary|facts|source, data:chartTitle|chart|note|facts|date,
   points:pt-<n° du point>, takeaway:quote|cta, extra-<id>:body, <page>:blk-<id> (parties ajoutées). Renvoie l'objet complet.
 - traits de séparation, posés un par un: visual.lines_after {{"<page>": ["<élément suivi d'un trait>", ...]}} (ex. {{"data": ["chart"]}}

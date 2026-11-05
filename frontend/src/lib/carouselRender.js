@@ -2,7 +2,7 @@
 import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
-  clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
+  clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang, renderVisual,
   applyTemplate, currentTemplate, tplScale, setRenderLabels, ellipsize, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet, roundRect,
 } from "@/lib/visualRender";
 
@@ -127,10 +127,10 @@ function withEl(ctx, d, id, fn) {
 // decorations (banner, logos, page number, quote marks, lines, signature…): moved, resized around
 // their anchor point, or hidden — each one on its own
 let CUR_D = null;
-function deco(ctx, d, id, ax, ay, fn) {
+function deco(ctx, d, id, ax, ay, fn, maxS = Infinity) {
   if (!d) return fn();
   if (isHidden(d, `${CUR_KIND}.${id}`)) return undefined;
-  const s = elScale(d, id);
+  const s = Math.min(maxS, elScale(d, id));
   const dx = elDx(d, id);
   const dy = elDy(d, id);
   return track(ctx, elKey(id), () => {
@@ -198,6 +198,10 @@ function heading(ctx, d, text, y) {
 
 const blocksOf = (d, pos = "bottom") => {
   const all = (d.v.page_blocks || {})[CUR_KIND];
+  // single visuals (Analyse / Data / Graphique): all added sections sit above the source line
+  if (["A", "B", "C"].includes(CUR_KIND)) {
+    return pos === "top" || !Array.isArray(all) ? [] : all.filter((b) => b && (clean(b.text) || clean(b.value) || clean(b.intro) || clean(b.col1) || clean(b.col2) || clean(b.col1t) || clean(b.col2t))).slice(0, 4);
+  }
   return Array.isArray(all)
     ? all.filter((b) => b && (clean(b.text) || clean(b.value) || clean(b.intro) || clean(b.col1) || clean(b.col2) || clean(b.col1t) || clean(b.col2t)) && (b.pos === "top" ? "top" : "bottom") === pos).slice(0, 4) : [];
 };
@@ -1081,6 +1085,43 @@ function extraPage(ctx, d, images, n, total, x) {
     endShift(ctx);
     if (!isHidden(d, `${CUR_KIND}.signature`)) deco(ctx, d, "signature", VW / 2, VH - 78, () => drawSignature(ctx));
   }
+}
+
+const FORMAT_WIDE = (id) => ["summary", "note", "facts", "atSource", "chart", "chartTitle", "source", "figure", "deadline"].includes(id)
+  || id.startsWith("pt-") || id.startsWith("blk-");
+export const formatElementMaxSize = (id) => (id === "title" ? 1.6 : FORMAT_WIDE(id) ? 1 : 1.6);
+
+// ---------- single visual (Analyse / Data / Graphique) with the same element system as the carousel ----------
+// Each element can be clicked, resized, moved, hidden; added sections and lines are drawn too.
+// Returns the list of elements drawn (for the click selection).
+export function renderFormat(ctx, opts) {
+  const { post, version } = opts;
+  const fmt = version === "C" && hasChart(post) ? "C" : version === "B" ? "B" : "A";
+  const d = { v: post.visual || {}, post };
+  if (!ctx.__elInstrumented) {
+    try { instrument(ctx); ctx.__elInstrumented = true; } catch { /* read-only context */ }
+  }
+  CUR_KIND = fmt;
+  CUR_D = d;
+  BOXES = [];
+  TRACKERS = [];
+  // the title is enlarged by its font size (it wraps instead of leaving the page); wide texts are
+  // only made smaller here (bigger = "Taille du texte"), decorations can be both
+  const titleS = elScale(d, "title");
+  const post2 = titleS === 1 ? post : { ...post, visual: { ...d.v, title_scale: (Number(d.v.title_scale) || 1) * titleS } };
+  renderVisual(ctx, {
+    ...opts,
+    post: post2,
+    hooks: {
+      wrap: (id, ax, ay, fn) => (id === "title" ? deco(ctx, d, id, ax, ay, fn, 1)
+        : deco(ctx, d, id, ax, ay, fn, FORMAT_WIDE(id) ? 1 : Infinity)),
+      reserve: () => blocksFit(ctx, d, "bottom").h,
+      after: (bottom) => drawPageBlocks(ctx, d, bottom),
+    },
+  });
+  TRACKERS = [];
+  drawDividers(ctx, d, fmt);
+  return BOXES;
 }
 
 // ---------- plan ----------

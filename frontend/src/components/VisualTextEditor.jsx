@@ -361,7 +361,6 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
           <Plus className="h-3.5 w-3.5" /> Ajouter une valeur
         </button>
       )}
-      {version !== "K" && noteField}
     </div>
   );
 
@@ -532,6 +531,15 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   const elementsOf = (kind) => {
     const H = ["heading", "Titre de la page"];
     let rows = [];
+    if (["A", "B", "C"].includes(kind)) {
+      rows = [["title", "Titre"], ["summary", "Résumé"], ["figure", "Chiffre clé"], ["deadline", "Échéance"], ["facts", "Faits"],
+        ["chart", "Graphique"], ["chartTitle", "Titre du graphique"], ["note", "Phrase sous le graphique"], ["atSource", "Titre de la source"],
+        ...shown.points.map((p, gi) => [`pt-${gi}`, `Point « ${String(p.label || "").slice(0, 30)} »`]), ["source", "Source"],
+        ["banner", "Bandeau NEWS"], ["date", "Date"], ["logo", "Logo FORSIDES"], ["sourceLogo", "Logo de la source"], ["signature", "Signature"]];
+      const blocksF = Array.isArray((v.page_blocks || {})[kind]) ? v.page_blocks[kind] : [];
+      blocksF.forEach((b) => rows.push([`blk-${b.id}`, "Partie ajoutée"]));
+      return rows;
+    }
     if (kind === "cover") rows = [["title", "Titre"], ["source", "Sources"]];
     else if (kind === "essential") rows = [H, ["figure", "Chiffre clé"], ["summary", "Résumé"], ["facts", "Faits clés"], ["source", "Source"]];
     else if (kind === "data") rows = hasChart(post)
@@ -696,14 +704,14 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     facts: "Faits", chart: "Graphique", note: "Phrase sous le graphique", date: "Date", quote: "Message", cta: "Question et appel de fin",
     body: "Contenu de la page", swipe: "« Faites défiler »", banner: "Bandeau NEWS", logo: "Logo FORSIDES", sourceLogo: "Logo de la source",
     pageNum: "Numéro de page", signature: "Signature", quoteOpen: "Guillemet ouvrant", quoteClose: "Guillemet fermant", rule: "Filet",
-    separators: "Séparateurs" };
+    separators: "Séparateurs", deadline: "Échéance", atSource: "Titre de la source" };
   const GRAPHIC = new Set(["banner", "logo", "sourceLogo", "pageNum", "signature", "quoteOpen", "quoteClose", "rule", "separators"]);
   const pageIds = (kind) => {
     const ids = [];
     [...pageBoxes].filter((b) => b.key.startsWith(`${kind}:`)).sort((a, b) => a.y0 - b.y0).forEach((b) => {
       let id = b.key.slice(kind.length + 1);
       if (id === "chartTitle") id = "chart";
-      if (kind === "cover" && id === "date") id = "coverDate";
+      if ((kind === "cover" || ["A", "B", "C"].includes(kind)) && id === "date") id = "coverDate";
       if (!ids.includes(id)) ids.push(id);
     });
     return ids;
@@ -738,6 +746,19 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       return m ? kLabel(m[0], "Texte du titre", m[1]) : null;
     }
     if (id === "title") return titleField;
+    const isFmt = ["A", "B", "C"].includes(kind);
+    if (id === "source" && isFmt) {
+      return (
+        <div className="space-y-2">
+          {multi ? labelField("labels", "sources", "Rubrique « Sources »", "SOURCES") : labelField("labels", "source", "Rubrique « Source »", "SOURCE")}
+          {sourceFields}
+        </div>
+      );
+    }
+    if (id === "deadline") return <div className="space-y-2">{dateField}{labelField("labels", "deadline", "Texte sous l'échéance", fr ? "échéance à retenir" : "key deadline")}</div>;
+    if (id === "atSource") return <p className="text-xs text-slate-500">Titre de l'article source (s'affiche quand il n'y a pas de points d'analyse).</p>;
+    if (id === "summary" && isFmt) return <div className="space-y-2">{labelField("labels", "essential", "Rubrique « L'essentiel »", fr ? "L'ESSENTIEL" : "IN A NUTSHELL")}{summaryField}</div>;
+    if (id === "facts" && kind === "B") return <div className="space-y-2">{labelField("labels", "figures", "Rubrique « Les chiffres »", fr ? "LES CHIFFRES" : "KEY FIGURES")}{factsField("Les chiffres (une ligne par chiffre)")}</div>;
     if (id === "source") {
       return (
         <div className="space-y-2">
@@ -834,6 +855,11 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   const pageSections = (kind) => {
     const ids = pageIds(kind);
     const content = ids.filter((id) => !GRAPHIC.has(id) && !id.startsWith("div-"));
+    // sections just added (still empty, so not drawn yet) are listed too, so they can be filled in
+    ((v.page_blocks || {})[kind] || []).forEach((b) => {
+      const bid = `blk-${b.id}`;
+      if (!content.includes(bid) && !hiddenMap[`${kind}.${bid}`]) content.push(bid);
+    });
     const graphics = ids.filter((id) => GRAPHIC.has(id) || id.startsWith("div-"));
     const select = (id) => onSelectEl && onSelectEl(`${kind}:${id === "coverDate" ? "date" : id === "chart" && !pageBoxes.some((b) => b.key === `${kind}:chart`) ? "chartTitle" : id}`);
     return (
@@ -866,6 +892,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     );
   };
   const hasDataPage = carKinds.includes("data");
+  const fmtKey = version === "C" && !hasChart(post) ? "A" : version;
   const carouselPage = {
     cover: (
       <Section>
@@ -984,26 +1011,20 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                 {posBar(version === "C" && !hasChart(post) ? "A" : version)}
                 {sourceToggle(version === "C" && !hasChart(post) ? "A" : version, true)}
               </Section>
-              <Section>{summaryField}</Section>
+              {elPanel(fmtKey)}
+              {pageSections(fmtKey)}
+              {version !== "C" && (
+                <button type="button" onClick={() => setCustom({ points: [...points, { label: "Point clé", text: "" }] })}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-forsides-slate hover:text-forsides-red">
+                  <Plus className="h-3.5 w-3.5" /> Ajouter un point
+                </button>
+              )}
+              {addBlockBar(fmtKey)}
               {version === "B" && (
-                <Section title="Chiffres">
-                  {keyFigure}
-                  {dateField}
-                  {factsField("Les chiffres (une ligne par chiffre)")}
+                <Section title="Autre rubrique">
+                  {labelField("labels", "atSource", "Rubrique « À la source »", fr ? "À LA SOURCE" : "FROM THE SOURCE")}
                 </Section>
               )}
-              {version === "C" && chartBlock && <Section title="Graphique">{chartBlock}</Section>}
-              {version !== "C" && <Section title="Points d'analyse">{pointsBlock(() => true, { addLabel: "À retenir" })}</Section>}
-              <Section title="Titres des rubriques, source et date">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {labelField("labels", "essential", "Rubrique « L'essentiel »", fr ? "L'ESSENTIEL" : "IN A NUTSHELL")}
-                  {version === "B" && labelField("labels", "figures", "Rubrique « Les chiffres »", fr ? "LES CHIFFRES" : "KEY FIGURES")}
-                  {version === "B" && labelField("labels", "atSource", "Rubrique « À la source »", fr ? "À LA SOURCE" : "FROM THE SOURCE")}
-                  {version === "B" && labelField("labels", "deadline", "Texte sous l'échéance", fr ? "échéance à retenir" : "key deadline")}
-                  {multi ? labelField("labels", "sources", "Rubrique « Sources »", "SOURCES") : labelField("labels", "source", "Rubrique « Source »", "SOURCE")}
-                </div>
-                {sourceFields}
-              </Section>
             </>
           )}
 

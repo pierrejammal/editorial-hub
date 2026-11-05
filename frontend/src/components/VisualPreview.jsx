@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import { VisualTextEditor } from "@/components/VisualTextEditor";
 import { TemplateEditor } from "@/components/TemplateEditor";
-import { renderCarousel, carouselPageLabel } from "@/lib/carouselRender";
+import { renderCarousel, carouselPageLabel, renderFormat, formatElementMaxSize } from "@/lib/carouselRender";
 import { setAssistView, onAiChange, pageKindForFields } from "@/lib/assistBus";
 import { jpegsToPdf } from "@/lib/pdf";
 import { prepareLogo } from "@/lib/logoImage";
@@ -39,7 +39,7 @@ const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, lab
         const ctx = c.getContext("2d");
         ctx.clearRect(0, 0, VW, VH);
         ctx.drawImage(cover, 0, 0);
-      } else renderVisual(c.getContext("2d"), { post, version, images, template });
+      } else renderFormat(c.getContext("2d"), { post, version, images, template });
     } catch (e) { console.error("concept render failed", e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.visual, post.meta, post.editorial, images, fontsReady, version, template]);
@@ -186,7 +186,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         thumbSrc = pages[0]; // "Mes posts" shows the cover
         setElBoxes(pages[pg].elBoxes || []);
       } else {
-        renderVisual(c.getContext("2d"), { post: localPost, version, images, template });
+        // same element system as the carousel: every element can be clicked and adjusted
+        setElBoxes(renderFormat(c.getContext("2d"), { post: localPost, version, images, template }) || []);
         setAssistView({ format: version, page: 0, pageCount: 0, pageKind: null, pageLabel: "" });
         jumpKindRef.current = null;
       }
@@ -428,14 +429,12 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   };
   const canvasClick = (e) => {
     if (moveMode) return;
-    if (isCarousel) {
-      const hit = hitAt(e);
-      if (hit) { setSelEl(hit.key); return; }
-      if (selEl) { setSelEl(null); return; }
-    }
+    const hit = hitAt(e);
+    if (hit) { setSelEl(hit.key); return; }
+    if (selEl) { setSelEl(null); return; }
     openZoom();
   };
-  const canvasHover = isCarousel && !moveMode ? {
+  const canvasHover = !moveMode ? {
     onMouseMove: (e) => { const h = hitAt(e); const k = h ? h.key : null; if (k !== hoverKey) setHoverKey(k); },
     onMouseLeave: () => setHoverKey(null),
   } : {};
@@ -444,7 +443,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     quote: "Message", cta: "Question et appel de fin", body: "Contenu de la page",
     banner: "Bandeau NEWS", logo: "Logo FORSIDES", sourceLogo: "Logo de la source", pageNum: "Numéro de page",
     swipe: "« Faites défiler »", separators: "Séparateur", quoteOpen: "Guillemet ouvrant", quoteClose: "Guillemet fermant",
-    rule: "Filet", signature: "Signature" };
+    rule: "Filet", signature: "Signature", deadline: "Échéance", atSource: "Titre de la source" };
   const elName = (key) => {
     const id = String(key || "").split(":").slice(1).join(":");
     if (id.startsWith("pt-")) return `Point ${Number(id.slice(3)) + 1}`;
@@ -467,6 +466,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const selCur = selEl ? elAll[selEl] || {} : {};
   const setSel = (patch) => updateVisual({ el: { ...elAll, [selEl]: { ...selCur, ...patch } } });
   const selBox = selEl ? boxOf(selEl) : null;
+  // Analyse / Data / Graphique: wide texts can only be made smaller (to enlarge them: « Taille du texte »)
+  const selMaxS = selEl && !isCarousel ? formatElementMaxSize(String(selEl).split(":").slice(1).join(":")) : 1.6;
   // "Masquer": the source is switched off with the page's source setting, the rest with visual.hidden
   const hideSel = () => {
     const [kind, ...rest] = String(selEl).split(":");
@@ -595,9 +596,9 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       </div>
       <label className="flex items-center gap-2 text-forsides-slate">
         <span className="w-14">Taille</span>
-        <input type="range" min={0.5} max={1.6} step={0.05} value={Number(selCur.s) || 1} data-testid="visual-el-size"
+        <input type="range" min={0.5} max={selMaxS} step={0.05} value={Number(selCur.s) || 1} data-testid="visual-el-size"
           onChange={(e) => setSel({ s: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-        <NumInput value={Number(selCur.s) || 1} min={50} max={160} scale={100} suffix="%" label="Taille (%)" testid="visual-el-size-num"
+        <NumInput value={Number(selCur.s) || 1} min={50} max={selMaxS * 100} scale={100} suffix="%" label="Taille (%)" testid="visual-el-size-num"
           className="w-14" onChange={(n) => setSel({ s: n })} />
       </label>
       <label className="mt-1.5 flex items-center gap-2 text-forsides-slate">
@@ -646,7 +647,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       </div>
     </div>
   );
-  const selectionLayer = isCarousel && (
+  const selectionLayer = (
     <>
       {hoverKey && hoverKey !== selEl && outline(hoverKey, false)}
       {selEl && outline(selEl, true)}
@@ -744,7 +745,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
             <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
               onClick={canvasClick}
               {...canvasHover}
-              title={moveMode ? "Glissez pour déplacer le texte" : isCarousel ? "Cliquez sur un texte pour régler sa taille et sa position" : "Cliquer pour agrandir"}
+              title={moveMode ? "Glissez pour déplacer le texte" : "Cliquez sur un élément pour régler sa taille et sa position"}
               {...dragProps}
               style={{ ...(fit ? { width: fit.w, height: fit.h } : {}), ...(dragProps.style || {}) }}
               className={`block cursor-zoom-in rounded-lg border bg-white shadow-md ${moveMode ? "border-forsides-red ring-2 ring-forsides-red/40" : "border-slate-200"} ${fit ? "" : "h-auto w-full"}`} />

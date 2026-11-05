@@ -456,13 +456,13 @@ function fitFontSize(ctx, text, family, size, maxW, min = 40) {
   return px;
 }
 
-function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
+function renderAnalysis(ctx, { title, content, headerBottom, footerTop, W = (id, ax, ay, fn) => fn() }) {
   ctx.fillStyle = BORDEAUX;
   ctx.font = "800 58px Outfit";
   ctx.textAlign = "left";
   const titleTop = Math.max(headerBottom + 110, 310);
-  const titleBottom = drawTitle(ctx, title, titleTop, 58, 70, 4);
-  drawRule(ctx, titleBottom + 20);
+  let titleBottom = titleTop;
+  W("title", PAD, titleTop - 60, () => { titleBottom = drawTitle(ctx, title, titleTop, 58, 70, 4); drawRule(ctx, titleBottom + 20); });
 
   const maxW = VW - PAD * 2;
   const points = content.points.slice(0, 3);
@@ -487,13 +487,13 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
 
   let y = top;
   const linesLeft = (lineH, offset) => Math.floor((bottom - y - offset) / lineH);
-  if (content.summary) {
+  if (content.summary) W("summary", PAD, y - 20, () => {
     drawLabel(ctx, T("essential"), PAD, y);
     ctx.fillStyle = INK;
     ctx.font = `400 ${Math.round(31 * s)}px Outfit`;
     y = drawParagraph(ctx, content.summary, PAD, y + 44 * s, maxW, 44 * s, true, Math.min(6, linesLeft(44 * s, 44 * s))) + gap;
-  }
-  points.forEach((p, i) => {
+  });
+  points.forEach((p, i) => W(`pt-${i}`, PAD, y - 20, () => {
     const room = linesLeft(40 * s, 46 * s);
     if (room < 1) return; // no space left: skip the block rather than overlapping the footer
     ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
@@ -508,16 +508,16 @@ function renderAnalysis(ctx, { title, content, headerBottom, footerTop }) {
     ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
     ctx.font = `500 ${Math.round(30 * s)}px Outfit`;
     y = drawParagraph(ctx, p.text, PAD + 40, y + 46 * s, maxW - 40, 40 * s, false, Math.min(4, room)) + gap;
-  });
+  }));
 }
 
-function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
+function renderData(ctx, { v, title, content, headerBottom, footerTop, W = (id, ax, ay, fn) => fn() }) {
   ctx.fillStyle = BORDEAUX;
   ctx.font = "800 46px Outfit";
   ctx.textAlign = "left";
   const titleTop = Math.max(headerBottom + 90, 300);
-  const titleBottom = drawTitle(ctx, title, titleTop, 46, 56, 4);
-  drawRule(ctx, titleBottom + 18);
+  let titleBottom = titleTop;
+  W("title", PAD, titleTop - 50, () => { titleBottom = drawTitle(ctx, title, titleTop, 46, 56, 4); drawRule(ctx, titleBottom + 18); });
 
   const colGap = 60;
   const leftX = PAD;
@@ -538,7 +538,8 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
     // argument fell back to drawParagraph's draw=true and left ghost copies of the text.)
     const leftCol = (s, draw = false) => {
       let y = top;
-      if (fig) {
+      const WD = (id, fn) => (draw ? W(id, leftX, y, fn) : fn()); // each piece adjustable when drawn
+      if (fig) WD("figure", () => {
         if (draw) { ctx.fillStyle = BRICK; }
         // shrink long figures ("12,5 Md€") so they never run into the right column
         fitFontSize(ctx, fig, "Anton", Math.round(128 * s), leftW);
@@ -549,15 +550,15 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
           ctx.font = `500 ${Math.round(27 * s)}px Outfit`;
           y = drawParagraph(ctx, v.key_figure_label, leftX, y + 20 * s, leftW, 36 * s, false, 3, draw) + 40 * s;
         }
-      }
-      if (v.important_date) {
+      });
+      if (v.important_date) WD("deadline", () => {
         if (draw) ctx.fillStyle = CORAL;
         ctx.font = `${Math.round(84 * s)}px Anton`;
         const dy = drawParagraph(ctx, String(v.important_date), leftX, y + 60 * s, leftW, 78 * s, false, 2, draw);
         if (draw) { ctx.fillStyle = INK; ctx.font = `500 ${Math.round(26 * s)}px Outfit`; ctx.fillText(T("deadline"), leftX, dy + 10 * s); }
         y = dy + 50 * s;
-      }
-      if (extras.length) {
+      });
+      if (extras.length) WD("facts", () => {
         if (draw) drawLabel(ctx, T("figures"), leftX, y + 40 * s);
         y += 50 * s;
         ctx.font = `500 ${Math.round(25 * s)}px Outfit`;
@@ -569,25 +570,27 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
           }
           y = drawParagraph(ctx, d, leftX + 26 * s, y + 24 * s, leftW - 26 * s, 34 * s, false, 3, draw) + 10 * s;
         });
-      }
+      });
       return y - top;
     };
     const s = fitScale(leftCol, bottom - top);
     ly = top + leftCol(s, true);
     const room = Math.floor((bottom - ly - 40) / 36);
-    if (content.summary && room >= 3) {
+    if (content.summary && room >= 3) W("summary", leftX, ly + 20, () => {
       ctx.fillStyle = INK;
       ctx.font = "400 26px Outfit";
       drawParagraph(ctx, content.summary, leftX, ly + 44, leftW, 36, false, room);
-    }
+    });
   } else {
     const text = content.summary || title;
     const measure = (s) => { ctx.font = `400 ${Math.round(29 * s)}px Outfit`; return 56 * s + drawParagraph(ctx, text, leftX, 0, leftW, 40 * s, false, 12, false); };
     const s = fitScale(measure, bottom - top);
-    drawLabel(ctx, T("essential"), leftX, ly + 10);
-    ctx.fillStyle = INK;
-    ctx.font = `400 ${Math.round(29 * s)}px Outfit`;
-    drawParagraph(ctx, text, leftX, ly + 56 * s, leftW, 40 * s, false, Math.floor((bottom - ly - 56 * s) / (40 * s)));
+    W("summary", leftX, ly, () => {
+      drawLabel(ctx, T("essential"), leftX, ly + 10);
+      ctx.fillStyle = INK;
+      ctx.font = `400 ${Math.round(29 * s)}px Outfit`;
+      drawParagraph(ctx, text, leftX, ly + 56 * s, leftW, 40 * s, false, Math.floor((bottom - ly - 56 * s) / (40 * s)));
+    });
   }
 
   // right column: analysis points, else the source headline as a pull-quote
@@ -597,7 +600,7 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
     const measure = (s) => { ctx.font = `600 ${Math.round(34 * s)}px Outfit`; return points.reduce((h, p) => h + 56 * s + (p.value ? 80 * s : 0) + drawParagraph(ctx, p.text, rx, 0, rightW, 44 * s, false, 4, false), 0) + (points.length - 1) * 42; };
     const s = fitScale(measure, bottom - top);
     let ry = top;
-    points.forEach((p, i) => {
+    points.forEach((p, i) => W(`pt-${i}`, rx, ry, () => {
       const room = Math.floor((bottom - ry - 56 * s) / (44 * s));
       if (room < 1) return;
       drawLabel(ctx, p.label.toUpperCase(), rx, ry + 10);
@@ -610,8 +613,8 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
       ctx.fillStyle = i % 2 === 0 ? BORDEAUX : BRICK;
       ctx.font = `600 ${Math.round(34 * s)}px Outfit`;
       ry = drawParagraph(ctx, p.text, rx, ry + 56 * s, rightW, 44 * s, false, Math.min(4, room)) + 42;
-    });
-  } else if (content.sourceTitle || content.source) {
+    }));
+  } else if (content.sourceTitle || content.source) W("atSource", rx, top, () => {
     drawLabel(ctx, T("atSource"), rx, top + 10);
     ctx.fillStyle = BRICK;
     ctx.font = "120px Anton";
@@ -624,7 +627,7 @@ function renderData(ctx, { v, title, content, headerBottom, footerTop }) {
       ctx.font = "500 24px Outfit";
       ctx.fillText(`${content.source}${content.date ? " · " + content.date : ""}`, rx, qy + 16);
     }
-  }
+  });
   ctx.textAlign = "left";
 }
 
@@ -795,19 +798,22 @@ function fitTextSize(ctx, text, style, size, min, maxW, maxLines) {
   return 0; // doesn't fit even at the minimum size
 }
 
-function renderChart(ctx, { v, title, content, headerBottom, footerTop }) {
+function renderChart(ctx, { v, title, content, headerBottom, footerTop, W = (id, ax, ay, fn) => fn() }) {
   const chart = v.chart;
   ctx.fillStyle = BORDEAUX;
   ctx.font = "800 48px Outfit";
   ctx.textAlign = "left";
   const titleTop = Math.max(headerBottom + 90, 300);
-  const titleBottom = drawTitle(ctx, title, titleTop, 48, 58, 3);
-  drawRule(ctx, titleBottom + 18);
+  let titleBottom = titleTop;
+  W("title", PAD, titleTop - 50, () => { titleBottom = drawTitle(ctx, title, titleTop, 48, 58, 3); drawRule(ctx, titleBottom + 18); });
 
   const maxW = VW - PAD * 2;
   const bottom = footerTop - 30;
   let y = titleBottom + 74;
-  if (chart.title) y = drawLabelLines(ctx, chart.title.toUpperCase(), PAD, y, maxW, 2) + 34;
+  if (chart.title) {
+    const ty = y;
+    W("chartTitle", PAD, ty - 20, () => { y = drawLabelLines(ctx, chart.title.toUpperCase(), PAD, ty, maxW, 2) + 34; });
+  }
 
   // Text blocks under the chart, measured first. Sentences are never cut in the middle:
   // the font gets smaller instead, and only whole sentences are dropped as a last resort.
@@ -846,22 +852,24 @@ function renderChart(ctx, { v, title, content, headerBottom, footerTop }) {
   const used = chartH + (showNote ? noteH : 0) + (showSummary ? sumH : 0);
   const gap = blocks > 1 ? Math.min(90, Math.max(MIN_GAP, (bottom - y - used) / blocks)) : 0;
 
-  if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, maxW, chartH);
-  else drawBarChart(ctx, chart, PAD, y, maxW, chartH);
+  W("chart", PAD, y, () => {
+    if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, maxW, chartH);
+    else drawBarChart(ctx, chart, PAD, y, maxW, chartH);
+  });
   y += chartH + gap;
 
-  if (showNote) {
+  if (showNote) W("note", PAD, y, () => {
     ctx.fillStyle = "#4a3a36";
     ctx.font = `italic 500 ${notePx}px Outfit`;
     drawParagraph(ctx, noteTxt, PAD, y + notePx, maxW, noteLH, false, noteLines);
     y += noteH + gap;
-  }
-  if (showSummary) {
+  });
+  if (showSummary) W("summary", PAD, y, () => {
     drawLabel(ctx, T("essential"), PAD, y + 18);
     ctx.fillStyle = INK;
     ctx.font = `400 ${sumPx}px Outfit`;
     drawParagraph(ctx, sumTxt, PAD, y + 44 + sumPx, maxW, sumLH, false, sumLines);
-  }
+  });
 }
 
 function drawSourceFooter(ctx, content, top) {
@@ -1011,29 +1019,34 @@ export function drawSignature(ctx) {
 }
 
 // opts: { post, version, images:{logoImg, sourceLogoImg} }
-export function renderVisual(ctx, { post, version, images, template }) {
+// hooks (given by carouselRender.renderFormat): wrap(id, anchorX, anchorY, draw) makes each element adjustable,
+// reserve() = room for the added sections, after(bottom) draws them
+export function renderVisual(ctx, { post, version, images, template, hooks }) {
+  const W = (hooks && hooks.wrap) || ((id, ax, ay, fn) => fn());
   if (template !== undefined) applyTemplate(resolveTemplate(template, [version === "B" || version === "C" ? version : "A"]));
   const v = post.visual || {};
   const title = v.title_short || post.editorial?.fact || post.meta?.topic || "";
   setRenderLang(langOf(post));
   setRenderLabels(v.labels);
   setTextScales(v.text_scale, v.title_scale);
-  const headerBottom = drawHeader(ctx, post, images);
+  const headerBottom = drawHeader(ctx, post, images, W);
   const content = resolveContent(post, title);
-  const footerTop = VH - 200;
+  const FOOT = VH - 200;
+  const footerTop = FOOT - (hooks && hooks.reserve ? hooks.reserve() : 0); // added sections sit above the source
 
   // "Position du texte": the content moves, the header, source footer and signature stay in place
   const fmt = version === "C" && hasChart(post) ? "C" : version === "B" ? "B" : "A";
   const off = Math.max(-400, Math.min(400, Number((v.content_offset || {})[fmt]) || 0));
   ctx.save();
   if (off) ctx.translate(0, off);
-  if (fmt === "C") renderChart(ctx, { v, title, content, headerBottom, footerTop });
-  else if (fmt === "B") renderData(ctx, { v, title, content, headerBottom, footerTop });
-  else renderAnalysis(ctx, { title, content, headerBottom, footerTop });
+  if (fmt === "C") renderChart(ctx, { v, title, content, headerBottom, footerTop, W });
+  else if (fmt === "B") renderData(ctx, { v, title, content, headerBottom, footerTop, W });
+  else renderAnalysis(ctx, { title, content, headerBottom, footerTop, W });
+  if (hooks && hooks.after) hooks.after(FOOT - 10);
   ctx.restore();
 
-  if ((v.page_source || {})[fmt] !== false) drawSourceFooter(ctx, content, footerTop); // "Afficher la source"
-  drawSignature(ctx);
+  if ((v.page_source || {})[fmt] !== false) W("source", PAD, FOOT, () => drawSourceFooter(ctx, content, FOOT)); // "Afficher la source"
+  W("signature", VW / 2, VH - 78, () => drawSignature(ctx));
 }
 
 export const FONT_SET = ["120px Anton", "800 60px Outfit", "500 28px Outfit", "700 44px Caveat", "140px Anton",
