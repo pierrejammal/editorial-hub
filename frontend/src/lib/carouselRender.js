@@ -3,7 +3,7 @@ import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
   clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang,
-  applyTemplate, currentTemplate, tplScale, setRenderLabels, ellipsize, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet,
+  applyTemplate, currentTemplate, tplScale, setRenderLabels, ellipsize, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet, roundRect,
 } from "@/lib/visualRender";
 
 const CL = {
@@ -154,7 +154,7 @@ function heading(ctx, d, text, y) {
 const blocksOf = (d, pos = "bottom") => {
   const all = (d.v.page_blocks || {})[CUR_KIND];
   return Array.isArray(all)
-    ? all.filter((b) => b && (clean(b.text) || clean(b.value) || clean(b.col1) || clean(b.col2) || clean(b.col1t) || clean(b.col2t)) && (b.pos === "top" ? "top" : "bottom") === pos).slice(0, 4) : [];
+    ? all.filter((b) => b && (clean(b.text) || clean(b.value) || clean(b.intro) || clean(b.col1) || clean(b.col2) || clean(b.col1t) || clean(b.col2t)) && (b.pos === "top" ? "top" : "bottom") === pos).slice(0, 4) : [];
 };
 // one section; returns its height (draw = false only measures)
 function drawBlock(ctx, b, y, k, draw) {
@@ -188,6 +188,8 @@ function drawBlock(ctx, b, y, k, draw) {
       if (draw) { ctx.fillStyle = "#4a3a36"; ctx.font = "600 26px Outfit"; ctx.fillText(`— ${clean(b.label)}`, PAD + 70, y + h + 40); }
       h += 50;
     }
+  } else if (b.type === "offer") {
+    h += drawOffer(ctx, b, y + h, k * 0.85, draw);
   } else if (b.type === "columns") {
     h += drawColumns(ctx, b, y + h, k, draw);
   } else if (b.type === "list") {
@@ -263,7 +265,8 @@ function blocksFit(ctx, d, pos) {
   let k = pageScale(d, CUR_KIND);
   const measure = () => 40 + blocks.reduce((h, b) => h + drawBlock(ctx, b, 0, k * elScale(d, `blk-${b.id}`), false) + BLOCK_GAP, 0);
   let h = measure();
-  while (h > 460 && k > 0.55) { k -= 0.05; h = measure(); }
+  const maxH = blocks.some((b) => b.type === "offer") ? 700 : 460; // "Notre accompagnement" needs more room
+  while (h > maxH && k > 0.55) { k -= 0.05; h = measure(); }
   return { h, k, blocks };
 }
 function blocksReserve(ctx, d) {
@@ -403,6 +406,114 @@ function drawColumns(ctx, b, y, k, draw, x0 = PAD, w = MAXW) {
     // thin divider between the two columns
     ctx.fillStyle = DOT;
     ctx.fillRect(x0 + cw + gap / 2 - 1, y, 2, h);
+  }
+  return h;
+}
+
+// ---------- "Notre accompagnement": FORSIDES services, each with a drawn icon ----------
+// icon picked from the service name (diagnostic, sinistralité, simulation, recommandations…)
+function iconKind(title, i) {
+  const t = String(title || "").toLowerCase();
+  if (/diagnost|contrat|contractuel|audit|clause|revue/.test(t)) return "doc";
+  if (/sinistr|analyse|statist|donn|suivi|tableau/.test(t)) return "chart";
+  if (/simul|financ|chiffr|calcul|tarif|provision|ratio|co[uû]t/.test(t)) return "calc";
+  if (/recommand|prospect|conseil|strat|pilot|d[ée]cision/.test(t)) return "bulb";
+  return ["doc", "chart", "calc", "bulb"][i % 4];
+}
+function drawIcon(ctx, kind, x, y, size, color) {
+  const u = size / 24; // drawn on a 24-unit grid, like a line icon
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(u, u);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  if (kind === "doc") {
+    ctx.moveTo(15, 3); ctx.lineTo(6, 3); ctx.quadraticCurveTo(4, 3, 4, 5); ctx.lineTo(4, 19); ctx.quadraticCurveTo(4, 21, 6, 21);
+    ctx.lineTo(11, 21); ctx.moveTo(15, 3); ctx.lineTo(19, 7); ctx.lineTo(19, 11); ctx.moveTo(15, 3); ctx.lineTo(15, 7); ctx.lineTo(19, 7);
+    ctx.moveTo(8, 10); ctx.lineTo(14, 10); ctx.moveTo(8, 14); ctx.lineTo(11, 14);
+    ctx.stroke(); ctx.beginPath(); ctx.arc(16.5, 16.5, 3, 0, Math.PI * 2); ctx.moveTo(18.7, 18.7); ctx.lineTo(21, 21); ctx.stroke();
+  } else if (kind === "chart") {
+    ctx.moveTo(3, 3); ctx.lineTo(3, 21); ctx.lineTo(21, 21);
+    ctx.moveTo(7, 16); ctx.lineTo(11, 11); ctx.lineTo(14, 14); ctx.lineTo(20, 7); ctx.moveTo(16, 7); ctx.lineTo(20, 7); ctx.lineTo(20, 11);
+    ctx.stroke();
+  } else if (kind === "calc") {
+    roundRect(ctx, 5, 2, 14, 20, 2); ctx.stroke();
+    ctx.beginPath(); ctx.rect(8, 5, 8, 4); ctx.stroke();
+    [[9, 13], [12, 13], [15, 13], [9, 16.5], [12, 16.5], [15, 16.5], [9, 19.5], [12, 19.5], [15, 19.5]].forEach(([cx, cy]) => {
+      ctx.beginPath(); ctx.arc(cx, cy, 0.9, 0, Math.PI * 2); ctx.fill();
+    });
+  } else {
+    ctx.arc(12, 9.5, 6, Math.PI * 0.8, Math.PI * 2.2); ctx.moveTo(9, 15.5); ctx.lineTo(9, 18); ctx.lineTo(15, 18); ctx.lineTo(15, 15.5);
+    ctx.moveTo(10, 21); ctx.lineTo(14, 21); ctx.moveTo(12, 1); ctx.lineTo(12, 2); ctx.moveTo(3, 9.5); ctx.lineTo(4, 9.5); ctx.moveTo(20, 9.5); ctx.lineTo(21, 9.5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+// x: { intro, text (one service per line, "Titre : description"), cta }; returns the height
+function drawOffer(ctx, x, y, k, draw, { withCta = true } = {}) {
+  const intro = clean(x.intro);
+  const items = String(x.text || "").split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 6).map((l) => {
+    const m = l.match(/^(.{2,60}?)\s*:\s+(.+)$/);
+    return m ? { t: m[1].trim(), d: m[2].trim() } : { t: l, d: "" };
+  });
+  const cta = withCta ? clean(x.cta) : "";
+  let h = 0;
+  if (intro) {
+    const px = Math.round(34 * k);
+    ctx.font = `600 ${px}px Outfit`;
+    const lh = Math.round(px * 1.32);
+    const n = Math.min(5, wrapWords(ctx, intro, MAXW).length);
+    if (draw) { ctx.fillStyle = BORDEAUX; drawParagraph(ctx, intro, PAD, y + px, MAXW, lh, false, 5); }
+    h += n * lh + Math.round(44 * k);
+  }
+  const box = Math.round(84 * k);
+  const tx = PAD + box + Math.round(30 * k);
+  const tw = VW - PAD - tx;
+  const tPx = Math.round(32 * k);
+  const dPx = Math.round(27 * k);
+  items.forEach((it, i) => {
+    ctx.font = `700 ${tPx}px Outfit`;
+    const tl = Math.min(2, wrapWords(ctx, it.t, tw).length);
+    ctx.font = `400 ${dPx}px Outfit`;
+    const dl = it.d ? Math.min(4, wrapWords(ctx, it.d, tw).length) : 0;
+    const textH = tl * Math.round(tPx * 1.25) + (dl ? 8 + dl * Math.round(dPx * 1.38) : 0);
+    const rowH = Math.max(box, textH);
+    if (draw) {
+      const iy = y + h + (rowH - box) / 2;
+      ctx.fillStyle = BRICK;
+      roundRect(ctx, PAD, iy, box, box, Math.round(box * 0.24)); ctx.fill();
+      drawIcon(ctx, iconKind(it.t, i), PAD + box * 0.2, iy + box * 0.2, box * 0.6, "#ffffff");
+      let ty = y + h + (rowH - textH) / 2;
+      ctx.fillStyle = INK;
+      ctx.font = `700 ${tPx}px Outfit`;
+      drawParagraph(ctx, it.t, tx, ty + tPx, tw, Math.round(tPx * 1.25), false, 2);
+      ty += tl * Math.round(tPx * 1.25) + 8;
+      if (dl) {
+        ctx.fillStyle = "#4a3a36";
+        ctx.font = `400 ${dPx}px Outfit`;
+        drawParagraph(ctx, it.d, tx, ty + dPx, tw, Math.round(dPx * 1.38), false, 4);
+      }
+      if (i < items.length - 1) { ctx.fillStyle = DOT; ctx.fillRect(tx, y + h + rowH + Math.round(18 * k), tw, 2); }
+    }
+    h += rowH + Math.round(36 * k);
+  });
+  if (cta) {
+    const px = Math.round(30 * k);
+    ctx.font = `700 ${px}px Outfit`;
+    const w = Math.min(MAXW, ctx.measureText(cta).width + px * 2);
+    const bh = Math.round(px * 2.1);
+    h += Math.round(10 * k);
+    if (draw) {
+      ctx.fillStyle = BRICK;
+      roundRect(ctx, PAD, y + h, w, bh, bh / 2); ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(ellipsize(ctx, cta, w - px * 2), PAD + px, y + h + bh / 2 + px * 0.36);
+    }
+    h += bh;
   }
   return h;
 }
@@ -835,6 +946,12 @@ function extraPage(ctx, d, images, n, total, x) {
       ctx.font = "600 32px Outfit";
       ctx.fillText(`— ${author}`, PAD, end + 40);
     }
+  } else if (type === "offer") {
+    // as large as the page allows, centred
+    let kk = k * 1.15;
+    let oh = drawOffer(ctx, x, 0, kk, false);
+    while (oh > avail && kk > 0.55) { kk -= 0.05; oh = drawOffer(ctx, x, 0, kk, false); }
+    drawOffer(ctx, x, areaTop + Math.max(0, (avail - oh) / 2), kk, true);
   } else if (type === "columns") {
     // bigger on a page of its own, fitted to the space and centred
     let kk = k * 1.25;
@@ -865,7 +982,11 @@ function extraPage(ctx, d, images, n, total, x) {
   endTrack(tb);
   ctx.restore();
   drawPageBlocks(ctx, d, VH - 190);
-  swipeHint(ctx);
+  if (n < total) swipeHint(ctx);
+  else { // last page: the signature instead of "Faites défiler"
+    endShift(ctx);
+    if (!isHidden(d, `${CUR_KIND}.signature`)) deco(ctx, d, "signature", VW / 2, VH - 78, () => drawSignature(ctx));
+  }
 }
 
 // ---------- plan ----------

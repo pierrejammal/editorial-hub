@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { resolveContent, hasChart } from "@/lib/visualRender";
-import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Columns2 } from "lucide-react";
+import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Columns2, Briefcase } from "lucide-react";
 
 const inputCls =
   "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20";
@@ -21,7 +21,38 @@ const EXTRA_TYPES = [
   { type: "quote", label: "Citation", icon: Quote, title: "Ils l'ont dit" },
   { type: "list", label: "Liste", icon: List, title: "En bref" },
   { type: "columns", label: "2 colonnes", icon: Columns2, title: "" },
+  { type: "offer", label: "Notre accompagnement", icon: Briefcase, title: "Notre accompagnement" },
 ];
+// starting content of a "Notre accompagnement" page / section (FORSIDES services), editable
+const OFFER_DEFAULT = {
+  intro: "De l’analyse réglementaire et contractuelle au chiffrage des impacts sur les portefeuilles, jusqu’aux décisions de tarification et de provisionnement, nous vous accompagnons dans vos travaux.",
+  text: [
+    "Diagnostic contractuel : Identifier clause par clause l’exposition des garanties et classer les contrats selon leur risque.",
+    "Analyse de sinistralité : Isoler les populations et les arrêts à enjeu et estimer leur poids dans le portefeuille.",
+    "Simulation financière : Scénarios bas / central / haut : impact en prestations, ratio S/P, coût par tête et besoin tarifaire.",
+    "Recommandations prospectives : Tarification, clauses contractuelles, provisionnement et pilotage du risque.",
+  ].join("\n"),
+  cta: "Parlons-en : www.forsides.fr",
+};
+const offerFields = (x, set) => (
+  <div className="space-y-2" data-testid="visual-offer-fields">
+    <div>
+      <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-slate-400">Phrase d'introduction</p>
+      <textarea rows={3} value={x.intro || ""} onChange={(e) => set({ intro: e.target.value })}
+        className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red" />
+    </div>
+    <div>
+      <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-slate-400">Services : un par ligne, « Titre : description » (l'icône est choisie selon le titre)</p>
+      <textarea rows={6} value={x.text || ""} data-testid="visual-offer-items" onChange={(e) => set({ text: e.target.value })}
+        className="w-full resize-y rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red" />
+    </div>
+    <div>
+      <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-slate-400">Bouton (vide = pas de bouton)</p>
+      <input value={x.cta || ""} onChange={(e) => set({ cta: e.target.value })}
+        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red" />
+    </div>
+  </div>
+);
 // the two columns of a "2 colonnes" section or page: a bold title + its text each
 const columnsFields = (x, set) => (
   <div className="grid gap-2 sm:grid-cols-2" data-testid="visual-columns-fields">
@@ -405,7 +436,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                 <input value={b.label || ""} placeholder="Ce qu'il mesure" onChange={(e) => setB(i, { label: e.target.value })} className={inputCls} />
               </div>
             )}
-            {b.type === "columns" ? columnsFields(b, (patch) => setB(i, patch)) : (
+            {b.type === "offer" ? offerFields(b, (patch) => setB(i, patch)) : b.type === "columns" ? columnsFields(b, (patch) => setB(i, patch)) : (
             <textarea rows={b.type === "list" ? 4 : 3} value={b.text || ""} data-testid={`visual-block-text-${i}`}
               placeholder={b.type === "list" ? "Un élément par ligne" : b.type === "quote" ? "La citation" : b.type === "figure" ? "Commentaire (facultatif)" : "Texte"}
               onChange={(e) => setB(i, { text: e.target.value })} className={`${inputCls} resize-y`} />
@@ -420,7 +451,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
             <span className="font-semibold text-forsides-ink">Ajouter une partie sur cette page :</span>
             {EXTRA_TYPES.map((t) => (
               <button key={t.type} type="button" data-testid={`visual-add-block-${t.type}`}
-                onClick={() => save([...list, { id: Date.now().toString(36), type: t.type, title: "", text: "", value: "", label: "" }])}
+                onClick={() => save([...list, { id: Date.now().toString(36), type: t.type, title: "", text: "", value: "", label: "", ...(t.type === "offer" ? OFFER_DEFAULT : {}) }])}
                 className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200">
                 <Plus className="h-3 w-3" /><t.icon className="h-3.5 w-3.5" /> {t.label}
               </button>
@@ -542,8 +573,9 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
   const addExtra = (type) => {
     const id = Date.now().toString(36);
     const def = EXTRA_TYPES.find((t) => t.type === type);
-    const after = String(activeKind).startsWith("extra-") ? "auto" : activeKind === "takeaway" ? "end" : activeKind;
-    updateVisual({ extra_pages: [...extras, { id, type, title: def.title, text: "", value: "", label: "", after }] });
+    const after = type === "offer" ? "end"
+      : String(activeKind).startsWith("extra-") ? "auto" : activeKind === "takeaway" ? "end" : activeKind;
+    updateVisual({ extra_pages: [...extras, { id, type, title: def.title, text: "", value: "", label: "", after, ...(type === "offer" ? OFFER_DEFAULT : {}) }] });
     setPendingKind(`extra-${id}`);
   };
   // move the current page left / right in the carousel
@@ -590,7 +622,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
           </div>
         </div>
       )}
-      {x.type === "columns" ? columnsFields(x, (patch) => setExtra(x.id, patch)) : (
+      {x.type === "offer" ? offerFields(x, (patch) => setExtra(x.id, patch)) : x.type === "columns" ? columnsFields(x, (patch) => setExtra(x.id, patch)) : (
         <div>
           <Label>{x.type === "list" ? "Éléments (un par ligne)" : x.type === "quote" ? "Citation" : x.type === "figure" ? "Commentaire (facultatif)" : "Texte"}</Label>
           <textarea data-testid="visual-extra-text" rows={x.type === "list" ? 5 : 4} value={x.text || ""}

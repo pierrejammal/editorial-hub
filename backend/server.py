@@ -1227,7 +1227,7 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "labels", "carousel_labels", "source_label", "date_label",
                       "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks",
                       "extra_sources", "page_source", "hidden", "page_order", "el"}
-EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after", "col1t", "col1", "col2t", "col2"}
+EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after", "col1t", "col1", "col2t", "col2", "intro", "cta"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
                               "analysis", "takeaway"}
@@ -1381,7 +1381,7 @@ Ce que tu peux modifier:
 - tailles de texte (0.7 à 1.4, défaut 1): visual.text_scale et visual.title_scale (formats A/B/C);
   carrousel, par page: visual.page_text_scale {{"cover": titre de couverture, "essential", "data", "points", "takeaway",
   "extra-<id>"}}. Renvoie l'objet complet.
-- pages ajoutées au carrousel: visual.extra_pages = liste COMPLÈTE de {{"id": "court", "type": "text"|"figure"|"quote"|"list"|"columns" (2 colonnes: "col1t", "col1", "col2t", "col2" = titre et texte de chaque colonne),
+- pages ajoutées au carrousel: visual.extra_pages = liste COMPLÈTE de {{"id": "court", "type": "text"|"figure"|"quote"|"list"|"columns"|"offer" ("offer" = Notre accompagnement FORSIDES: "intro", "text" un service par ligne « Titre : description », "cta" bouton; 2 colonnes: "col1t", "col1", "col2t", "col2" = titre et texte de chaque colonne),
   "title": "titre de page", "text": "texte (list: un élément par ligne; quote: la citation)", "value": "chiffre (figure)",
   "label": "ce que mesure le chiffre (figure) ou auteur (quote)", "after": "auto"|"cover"|"essential"|"data"|"points"|"end"}}.
 - position verticale du contenu (en px, -300 = plus haut, +300 = plus bas): visual.content_offset
@@ -1525,7 +1525,7 @@ Renvoie STRICTEMENT ce JSON:
                 str(k)[:40]: [{**{f: str(b.get(f, ""))[:600] for f in EXTRA_PAGE_FIELDS if f != "after"},
                                "pos": "top" if b.get("pos") == "top" else "bottom",
                                "id": str(b.get("id") or uuid.uuid4().hex[:6])[:20]}
-                              for b in lst[:4] if isinstance(b, dict) and b.get("type") in ("text", "figure", "quote", "list", "columns")]
+                              for b in lst[:4] if isinstance(b, dict) and b.get("type") in ("text", "figure", "quote", "list", "columns", "offer")]
                 for k, lst in pb.items() if isinstance(lst, list)}}
         else:
             vis.pop("page_blocks")
@@ -1534,7 +1534,7 @@ Renvoie STRICTEMENT ce JSON:
         if isinstance(ep, list):
             vis["extra_pages"] = [
                 {**{k: str(x.get(k, ""))[:600] for k in EXTRA_PAGE_FIELDS}, "id": str(x.get("id") or uuid.uuid4().hex[:6])[:20]}
-                for x in ep[:6] if isinstance(x, dict) and x.get("type") in ("text", "figure", "quote", "list", "columns")]
+                for x in ep[:6] if isinstance(x, dict) and x.get("type") in ("text", "figure", "quote", "list", "columns", "offer")]
         else:
             vis.pop("extra_pages")
     for key in ("source_label", "date_label"):
