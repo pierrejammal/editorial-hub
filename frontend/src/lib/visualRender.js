@@ -76,15 +76,23 @@ export function patchTemplate(t, scope, patch) {
 }
 export const carouselScopes = (pageIndex) => ["K", pageIndex === 0 ? "Kcover" : "Kinner"];
 
+// Baseline that centres a text vertically in a box, using the real height of its letters
+function textBaseline(ctx, text, top, height, px) {
+  const m = ctx.measureText(text);
+  const asc = Number.isFinite(m.actualBoundingBoxAscent) && m.actualBoundingBoxAscent > 0 ? m.actualBoundingBoxAscent : px * 0.74;
+  const desc = Number.isFinite(m.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : 0;
+  return top + (height - (asc + desc)) / 2 + asc;
+}
+
 // Banner (NEWS…) in the template's shape; returns its right edge. Used by the carousel's inner pages.
 export function drawBanner(ctx, label, x, y, h, px) {
   if (!label) return x;
-  ctx.font = `${px}px Anton`;
+  ctx.font = `${Math.min(px, Math.round((h * 0.62) / 0.74))}px Anton`; // letters always inside the banner
   const tw = ctx.measureText(label).width;
   const padX = Math.round(h * 0.2);
   const w = tw + padX * 2;
   const shape = TPL.bannerShape;
-  const base = y + h - Math.round((h - px * 0.72) / 2);
+  const base = textBaseline(ctx, label, y, h, px);
   ctx.textAlign = "left";
   if (shape === "underline") {
     ctx.fillStyle = BRICK;
@@ -899,13 +907,15 @@ export function drawHeader(ctx, post, images, wrap = (id, ax, ay, fn) => fn()) {
   let bannerRight = PAD;
   if (label) wrap("banner", PAD, rectY, () => {
     // long words get a smaller font so the banner never runs into the logos
-    const px = fitFontSize(ctx, label, "Anton", Math.round(118 * bs), Math.min(640, 560 * bs), 60);
+    // the letters always fit inside the banner (≈ 62 % of its height), centred on their real height
+    const px = Math.min(fitFontSize(ctx, label, "Anton", Math.round(118 * bs), Math.min(640, 560 * bs), 40), Math.round(rectH * 0.62 / 0.74));
+    ctx.font = `${px}px Anton`;
     const tw = ctx.measureText(label).width;
     const w = tw + padX * 2;
     const shape = TPL.bannerShape;
     if (shape === "underline") {
       ctx.fillStyle = BRICK;
-      ctx.fillText(label, PAD, rectY + rectH - 26 * bs);
+      ctx.fillText(label, PAD, textBaseline(ctx, label, rectY, rectH - 10, px));
       ctx.fillRect(PAD, rectY + rectH - 6, tw, 10);
       bannerRight = PAD + tw;
     } else {
@@ -920,7 +930,7 @@ export function drawHeader(ctx, post, images, wrap = (id, ax, ay, fn) => fn()) {
       ctx.shadowOffsetY = 4;
       ctx.fillStyle = "#fff";
       ctx.font = `${px}px Anton`;
-      ctx.fillText(label, PAD + padX + (shape === "pill" ? 10 : 0), rectY + rectH - 26 * bs - (118 * bs - px) * 0.4);
+      ctx.fillText(label, PAD + padX + (shape === "pill" ? 10 : 0), textBaseline(ctx, label, rectY, rectH, px));
       ctx.restore();
       bannerRight = PAD + w + (shape === "pill" ? 20 : 0);
     }
