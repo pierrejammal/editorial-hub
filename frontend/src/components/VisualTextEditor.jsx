@@ -84,7 +84,7 @@ const FORMAT_HINT = {
 // Lets the user correct every text block of the visual by hand (instead of regenerating the post).
 // Only the texts of the format being viewed are shown; in the carousel, one tab per page.
 // Edits are stored in post.visual (custom summary/points, figures, chart) and drawn immediately.
-export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds = [], carPage = 0, onCarPage }) => {
+export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds = [], carPage = 0, onCarPage, pageBoxes = [], onSelectEl }) => {
   const [open, setOpen] = useState(false);
   const v = post.visual || {};
   const chart = v.chart;
@@ -317,6 +317,12 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     </div>
   );
 
+  const noteField = hasChart(post) && (
+    <div>
+      <Label>Phrase sous le graphique</Label>
+      <textarea rows={2} data-testid="visual-edit-note" value={chart.note || ""} onChange={(e) => setChart({ note: e.target.value })} className={`${inputCls} resize-y`} />
+    </div>
+  );
   const chartBlock = hasChart(post) && (
     <div className="space-y-2">
       <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
@@ -355,10 +361,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
           <Plus className="h-3.5 w-3.5" /> Ajouter une valeur
         </button>
       )}
-      <div>
-        <Label>Phrase de lecture</Label>
-        <textarea rows={2} value={chart.note || ""} onChange={(e) => setChart({ note: e.target.value })} className={`${inputCls} resize-y`} />
-      </div>
+      {version !== "K" && noteField}
     </div>
   );
 
@@ -387,6 +390,66 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
           <button type="button" onClick={() => set(0)} title="Remettre à sa place" aria-label="Remettre à sa place"
             className="text-slate-400 hover:text-forsides-red"><RotateCcw className="h-3.5 w-3.5" /></button>
         )}
+      </div>
+    );
+  };
+
+  // editor of one section added in a page
+  const blockEditor = (kind, bid) => {
+    const all = v.page_blocks || {};
+    const list = Array.isArray(all[kind]) ? all[kind] : [];
+    const i = list.findIndex((b) => b.id === bid);
+    if (i < 0) return null;
+    const b = list[i];
+    const save = (next) => updateVisual({ page_blocks: { ...all, [kind]: next } });
+    const setB = (patch) => save(list.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+    return (
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center gap-1">
+          {EXTRA_TYPES.map((t) => (
+            <button key={t.type} type="button" onClick={() => setB({ type: t.type, ...(t.type === "offer" && !b.intro ? OFFER_DEFAULT : {}) })}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                b.type === t.type ? "bg-forsides-ink text-white" : "bg-white text-forsides-slate ring-1 ring-slate-200 hover:bg-slate-100"}`}>
+              <t.icon className="h-3 w-3" /> {t.label}
+            </button>
+          ))}
+          <button type="button" aria-label="Supprimer cette partie" onClick={() => save(list.filter((_, k) => k !== i))}
+            className="ml-auto inline-flex items-center gap-1 p-1 text-[11px] text-slate-400 hover:text-forsides-red"><Trash2 className="h-3.5 w-3.5" /> Supprimer</button>
+        </div>
+        <textarea rows={1} value={b.title || ""} placeholder="Sous-titre (facultatif)" onChange={(e) => setB({ title: e.target.value })}
+          className={`${inputCls} resize-y py-1.5 text-xs font-semibold uppercase`} />
+        {b.type === "figure" && (
+          <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
+            <input value={b.value || ""} placeholder="Chiffre (ex. 19,7 Md€)" onChange={(e) => setB({ value: e.target.value })} className={`${inputCls} sm:w-40`} />
+            <input value={b.label || ""} placeholder="Ce qu'il mesure" onChange={(e) => setB({ label: e.target.value })} className={inputCls} />
+          </div>
+        )}
+        {b.type === "offer" ? offerFields(b, setB) : b.type === "columns" ? columnsFields(b, setB) : (
+          <textarea rows={b.type === "list" ? 4 : 3} value={b.text || ""} data-testid={`visual-block-text-${i}`}
+            placeholder={b.type === "list" ? "Un élément par ligne" : b.type === "quote" ? "La citation" : b.type === "figure" ? "Commentaire (facultatif)" : "Texte"}
+            onChange={(e) => setB({ text: e.target.value })} className={`${inputCls} resize-y`} />
+        )}
+        {b.type === "quote" && (
+          <input value={b.label || ""} placeholder="Auteur (facultatif)" onChange={(e) => setB({ label: e.target.value })} className={inputCls} />
+        )}
+      </div>
+    );
+  };
+  // "Ajouter une partie sur cette page"
+  const addBlockBar = (kind) => {
+    const all = v.page_blocks || {};
+    const list = Array.isArray(all[kind]) ? all[kind] : [];
+    if (list.length >= 4) return null;
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="visual-add-block">
+        <span className="font-semibold text-forsides-ink">Ajouter une partie sur cette page :</span>
+        {EXTRA_TYPES.map((t) => (
+          <button key={t.type} type="button" data-testid={`visual-add-block-${t.type}`}
+            onClick={() => updateVisual({ page_blocks: { ...all, [kind]: [...list, { id: Date.now().toString(36), type: t.type, title: "", text: "", value: "", label: "", ...(t.type === "offer" ? OFFER_DEFAULT : {}) }] } })}
+            className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200">
+            <Plus className="h-3 w-3" /><t.icon className="h-3.5 w-3.5" /> {t.label}
+          </button>
+        ))}
       </div>
     );
   };
@@ -590,10 +653,6 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
           </button>
         ))}
       </div>
-      <div>
-        <Label>Titre de la page</Label>
-        <textarea rows={1} data-testid="visual-extra-title" value={x.title || ""} onChange={(e) => setExtra(x.id, { title: e.target.value })} className={`${inputCls} resize-y`} />
-      </div>
       {x.type === "figure" && (
         <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
           <div>
@@ -632,6 +691,135 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       </div>
     </Section>
   );
+  // ---------- the page as sections: exactly what is drawn on it, in the same order ----------
+  const EL_LABEL = { heading: "Titre de la page", title: "Titre", source: "Source", figure: "Chiffre clé", summary: "Résumé",
+    facts: "Faits", chart: "Graphique", note: "Phrase sous le graphique", date: "Date", quote: "Message", cta: "Question et appel de fin",
+    body: "Contenu de la page", swipe: "« Faites défiler »", banner: "Bandeau NEWS", logo: "Logo FORSIDES", sourceLogo: "Logo de la source",
+    pageNum: "Numéro de page", signature: "Signature", quoteOpen: "Guillemet ouvrant", quoteClose: "Guillemet fermant", rule: "Filet",
+    separators: "Séparateurs" };
+  const GRAPHIC = new Set(["banner", "logo", "sourceLogo", "pageNum", "signature", "quoteOpen", "quoteClose", "rule", "separators"]);
+  const pageIds = (kind) => {
+    const ids = [];
+    [...pageBoxes].filter((b) => b.key.startsWith(`${kind}:`)).sort((a, b) => a.y0 - b.y0).forEach((b) => {
+      let id = b.key.slice(kind.length + 1);
+      if (id === "chartTitle") id = "chart";
+      if (kind === "cover" && id === "date") id = "coverDate";
+      if (!ids.includes(id)) ids.push(id);
+    });
+    return ids;
+  };
+  const edIndexOf = (gi) => {
+    const t = shown.points[gi];
+    return points.findIndex((p) => t && (p.label || "") === (t.label || "") && (p.text || "") === (t.text || ""));
+  };
+  const elLabel = (kind, id) => {
+    if (id.startsWith("pt-")) { const t = shown.points[Number(id.slice(3))]; return `Point « ${String(t?.label || "").slice(0, 40)} »`; }
+    if (id.startsWith("blk-")) {
+      const b = ((v.page_blocks || {})[kind] || []).find((x) => `blk-${x.id}` === id);
+      return `Partie ajoutée${b ? ` · ${EXTRA_TYPES.find((t) => t.type === b.type)?.label || ""}` : ""}`;
+    }
+    if (id.startsWith("div-")) return `Trait ${Number(id.slice(4)) + 1}`;
+    if (id === "coverDate") return "Date";
+    return EL_LABEL[id] || id;
+  };
+  const sectionBody = (kind, id) => {
+    const ptCount = pageIds(kind).filter((x) => x.startsWith("pt-")).length;
+    if (id === "heading") {
+      if (extraOf(kind)) {
+        const x = extraOf(kind);
+        return <textarea rows={1} data-testid="visual-extra-title" value={x.title || ""} onChange={(e) => setExtra(x.id, { title: e.target.value })} className={`${inputCls} resize-y`} />;
+      }
+      if (kind === "points" && ptCount === 1) return <p className="text-xs text-slate-500">Sur cette page, le titre est le libellé du point ci-dessous.</p>;
+      const map = { essential: ["essential", fr ? "L'essentiel" : "In a nutshell"], points: ["analysis", fr ? "Décryptage" : "Analysis"],
+        takeaway: ["takeaway", fr ? "À retenir" : "Key takeaway"],
+        data: hasChart(post) ? ["figures", fr ? "Les chiffres" : "The figures"] : ["keyFigures", fr ? "Les chiffres clés" : "Key figures"] };
+      const m = map[kind];
+      return m ? kLabel(m[0], "Texte du titre", m[1]) : null;
+    }
+    if (id === "title") return titleField;
+    if (id === "source") {
+      return (
+        <div className="space-y-2">
+          {multi ? kLabel("sources", "Libellé « Sources : »", fr ? "Sources :" : "Sources:") : kLabel("source", "Libellé « Source : »", fr ? "Source :" : "Source:")}
+          {sourceFields}
+        </div>
+      );
+    }
+    if (id === "figure") return keyFigure;
+    if (id === "summary") return summaryField;
+    if (id === "facts") return factsField(kind === "essential" ? "Faits clés (une ligne par fait)" : "Faits chiffrés (une ligne par fait)");
+    if (id === "chart") return chartBlock;
+    if (id === "note") return noteField;
+    if (id === "date") return <div className="space-y-2">{dateField}{kLabel("deadline", "Texte sous l'échéance", fr ? "échéance à retenir" : "key deadline")}</div>;
+    if (id === "coverDate") {
+      return (
+        <label className="inline-flex items-center gap-2 text-xs text-forsides-ink">
+          <input type="checkbox" checked={!v.hide_date} onChange={(e) => updateVisual({ hide_date: !e.target.checked })} /> Afficher la date
+        </label>
+      );
+    }
+    if (id === "swipe") return kLabel("swipe", "Texte", fr ? "Faites défiler" : "Swipe");
+    if (id.startsWith("pt-")) {
+      const ei = edIndexOf(Number(id.slice(3)));
+      return ei >= 0 ? pointsBlock((p) => p === points[ei], { max: 0 }) : null;
+    }
+    if (id === "quote") {
+      return (
+        <div>
+          <Label>Message (les guillemets sont ajoutés automatiquement)</Label>
+          <textarea data-testid="visual-edit-takeaway" rows={3}
+            value={takeawayIdx >= 0 ? points[takeawayIdx].text : (post.editorial?.insight || v.insight_line || "")}
+            onChange={(e) => (takeawayIdx >= 0 ? setPoint(takeawayIdx, { text: e.target.value })
+              : setCustom({ points: [...points, { label: "À retenir", text: e.target.value }] }))}
+            className={`${inputCls} resize-y`} />
+        </div>
+      );
+    }
+    if (id === "cta") {
+      return (
+        <div className="space-y-2">
+          <textarea rows={1} data-testid="visual-edit-cta-question" value={v.cta_question ?? ""} placeholder="Vous avez trouvé ce décryptage utile ?"
+            onChange={(e) => updateVisual({ cta_question: e.target.value })} className={`${inputCls} resize-y`} />
+          <textarea rows={1} data-testid="visual-edit-cta-text" value={v.cta_text ?? ""} placeholder="Suivez FORSIDES pour ne rien manquer de l'actualité actuarielle."
+            onChange={(e) => updateVisual({ cta_text: e.target.value })} className={`${inputCls} resize-y`} />
+        </div>
+      );
+    }
+    if (id.startsWith("blk-")) return blockEditor(kind, id.slice(4));
+    if (id === "body" && extraOf(kind)) return extraEditor(extraOf(kind));
+    return null;
+  };
+  const pageSections = (kind) => {
+    const ids = pageIds(kind);
+    const content = ids.filter((id) => !GRAPHIC.has(id) && !id.startsWith("div-"));
+    const graphics = ids.filter((id) => GRAPHIC.has(id) || id.startsWith("div-"));
+    const select = (id) => onSelectEl && onSelectEl(`${kind}:${id === "coverDate" ? "date" : id === "chart" && !pageBoxes.some((b) => b.key === `${kind}:chart`) ? "chartTitle" : id}`);
+    return (
+      <div className="space-y-2" data-testid="visual-page-sections">
+        {content.map((id, n) => (
+          <div key={id} className="rounded-lg border border-slate-200 bg-white p-2.5" data-testid={`visual-section-${id}`}>
+            <div className="mb-1.5 flex items-center gap-2">
+              <span className="font-mono text-[10px] text-slate-400">{n + 1}</span>
+              <span className="text-xs font-semibold text-forsides-ink">{elLabel(kind, id)}</span>
+              <button type="button" onClick={() => select(id)} title="Le sélectionner sur l'aperçu (taille, position, ordre…)"
+                className="ml-auto text-[11px] text-forsides-slate hover:text-forsides-red">Régler sur l'aperçu</button>
+            </div>
+            {sectionBody(kind, id)}
+          </div>
+        ))}
+        {graphics.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs" data-testid="visual-page-graphics">
+            <span className="font-medium text-forsides-ink">Éléments graphiques :</span>
+            {graphics.map((id) => (
+              <button key={id} type="button" onClick={() => select(id)} title="Le sélectionner sur l'aperçu"
+                className="rounded-full bg-slate-100 px-2.5 py-0.5 text-forsides-slate hover:bg-slate-200">{elLabel(kind, id)}</button>
+            ))}
+          </div>
+        )}
+        {!ids.length && <p className="text-xs text-slate-400">Chargement de la page…</p>}
+      </div>
+    );
+  };
   const hasDataPage = carKinds.includes("data");
   const carouselPage = {
     cover: (
@@ -721,9 +909,20 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
               {posBar(`k:${activeKind}`)}
               {elPanel(activeKind)}
-              {showList(activeKind)}
-              {extraOf(activeKind) ? extraEditor(extraOf(activeKind)) : carouselPage[activeKind]}
-              {blocksEditor(activeKind)}
+              <label className="inline-flex items-center gap-2 text-xs text-forsides-ink">
+                <input type="checkbox" data-testid={`visual-dividers-${activeKind}`} checked={Boolean((v.dividers || {})[activeKind])}
+                  onChange={(e) => updateVisual({ dividers: { ...(v.dividers || {}), [activeKind]: e.target.checked } })} />
+                Traits entre les parties
+              </label>
+              {pageSections(activeKind)}
+              {extraOf(activeKind) && !pageIds(activeKind).includes("body") && extraEditor(extraOf(activeKind))}
+              {activeKind === "points" && (
+                <button type="button" onClick={() => setCustom({ points: [...points, { label: "Point clé", text: "" }] })}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-forsides-slate hover:text-forsides-red">
+                  <Plus className="h-3.5 w-3.5" /> Ajouter un point
+                </button>
+              )}
+              {addBlockBar(activeKind)}
               {extras.length < 6 && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-xs" data-testid="visual-add-page">
                   <span className="font-semibold text-forsides-ink">Ajouter une page après celle-ci :</span>

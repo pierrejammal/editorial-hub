@@ -292,7 +292,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       </div>
 
       <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual}
-        carKinds={carKinds} carPage={carPage} onCarPage={setCarPage} />
+        carKinds={carKinds} carPage={carPage} onCarPage={setCarPage} pageBoxes={elBoxes} onSelectEl={setSelEl} />
 
       <TemplateEditor version={version} pageIndex={carPage} />
 
