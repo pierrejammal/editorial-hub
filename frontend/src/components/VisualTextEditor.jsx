@@ -412,6 +412,72 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     );
   };
 
+  // ---------- size & position of each element of a carousel page ----------
+  const elementsOf = (kind) => {
+    const H = ["heading", "Titre de la page"];
+    let rows = [];
+    if (kind === "cover") rows = [["title", "Titre"], ["source", "Sources"]];
+    else if (kind === "essential") rows = [H, ["figure", "Chiffre clé"], ["summary", "Résumé"], ["facts", "Faits clés"], ["source", "Source"]];
+    else if (kind === "data") rows = hasChart(post)
+      ? [H, ["chartTitle", "Titre du graphique"], ["chart", "Graphique"], ["note", "Phrase sous le graphique"], ["facts", "Faits chiffrés"]]
+      : [H, ["date", "Échéance"], ["facts", "Faits chiffrés"]];
+    else if (kind === "points") rows = [H, ...shown.points.map((p, gi) => [p, gi]).filter(([p]) => !TAKEAWAY_RE.test(p.label || ""))
+      .map(([p, gi]) => [`pt-${gi}`, `Point « ${String(p.label || "").slice(0, 30)} »`])];
+    else if (kind === "takeaway") rows = [H, ["quote", "Message"], ["cta", "Question et appel de fin"]];
+    else if (String(kind).startsWith("extra-")) rows = [H, ["body", "Contenu de la page"]];
+    const blocks = Array.isArray((v.page_blocks || {})[kind]) ? v.page_blocks[kind] : [];
+    blocks.forEach((b) => rows.push([`blk-${b.id}`, `Partie « ${String(b.title || EXTRA_TYPES.find((t) => t.type === b.type)?.label || "").slice(0, 30)} »`]));
+    return rows;
+  };
+  const elPanel = (kind) => {
+    const all = v.el || {};
+    const set = (id, patch) => updateVisual({ el: { ...all, [`${kind}:${id}`]: { ...(all[`${kind}:${id}`] || {}), ...patch } } });
+    const rows = elementsOf(kind);
+    const changed = rows.filter(([id]) => all[`${kind}:${id}`]).length;
+    return (
+      <details className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2" data-testid="visual-el-panel">
+        <summary className="cursor-pointer select-none text-xs font-semibold text-forsides-ink">
+          Taille et position de chaque élément {changed > 0 && <span className="font-normal text-forsides-red">({changed} modifié{changed > 1 ? "s" : ""})</span>}
+        </summary>
+        <div className="mt-2 space-y-3">
+          {rows.map(([id, label]) => {
+            const cur = all[`${kind}:${id}`] || {};
+            const sz = Number(cur.s) || 1;
+            const y = Number(cur.y) || 0;
+            return (
+              <div key={id} className="space-y-1" data-testid={`visual-el-${id}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-forsides-ink">{label}</span>
+                  {(sz !== 1 || y !== 0) && (
+                    <button type="button" onClick={() => {
+                      const next = { ...all }; delete next[`${kind}:${id}`]; updateVisual({ el: next });
+                    }} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-forsides-red">
+                      <RotateCcw className="h-3 w-3" /> Rétablir
+                    </button>
+                  )}
+                </div>
+                <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
+                    <span className="w-14 shrink-0">Taille</span>
+                    <input type="range" min={0.5} max={1.6} step={0.05} value={sz} aria-label={`Taille : ${label}`}
+                      onChange={(e) => set(id, { s: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
+                    <span className="w-10 text-right font-mono">{Math.round(sz * 100)}%</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
+                    <span className="w-14 shrink-0">Position</span>
+                    <input type="range" min={-300} max={300} step={5} value={y} aria-label={`Position : ${label}`}
+                      onChange={(e) => set(id, { y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
+                    <span className="w-10 text-right font-mono">{y > 0 ? `↓${y}` : y < 0 ? `↑${-y}` : "0"}</span>
+                  </label>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </details>
+    );
+  };
+
   const pageSize = (kind, label = "Taille du texte") => slider(label, (v.page_text_scale || {})[kind],
     (n) => updateVisual({ page_text_scale: { ...(v.page_text_scale || {}), [kind]: n } }), `visual-size-${kind}`);
 
@@ -593,6 +659,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               </div>
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
               {posBar(`k:${activeKind}`)}
+              {elPanel(activeKind)}
               {showList(activeKind)}
               {extraOf(activeKind) ? extraEditor(extraOf(activeKind)) : carouselPage[activeKind]}
               {blocksEditor(activeKind)}

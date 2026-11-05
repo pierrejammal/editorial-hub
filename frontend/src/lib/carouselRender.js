@@ -44,12 +44,32 @@ function endShift(ctx) {
   SHIFTED = false;
 }
 
+// Size and position of each element of a page, set one by one by the user:
+// visual.el["points:pt-2"] = { s: 1.2 (size ×), y: -40 (px, up < 0 < down) }
+const elKey = (id) => `${CUR_KIND}:${id}`;
+function elScale(d, id) {
+  const n = Number(((d.v.el || {})[elKey(id)] || {}).s);
+  return Number.isFinite(n) && n > 0 ? Math.max(0.5, Math.min(1.6, n)) : 1;
+}
+function elDy(d, id) {
+  const n = Number(((d.v.el || {})[elKey(id)] || {}).y);
+  return Number.isFinite(n) ? Math.max(-400, Math.min(400, n)) : 0;
+}
+// draws one element moved by its own offset
+function withEl(ctx, d, id, fn) {
+  const dy = elDy(d, id);
+  if (!dy) return fn();
+  ctx.save();
+  ctx.translate(0, dy);
+  try { return fn(); } finally { ctx.restore(); }
+}
+
 // elements removed by the user on a page ("Ce qui s'affiche sur cette page"): visual.hidden["data.chart"] = true…
 const isHidden = (d, key) => Boolean((d.v.hidden || {})[key]);
 // page title, unless removed (then the content moves up)
 function heading(ctx, d, text, y) {
   if (isHidden(d, `${CUR_KIND}.heading`) || !String(text || "").trim()) return -70;
-  return bigLabel(ctx, text, y);
+  return withEl(ctx, d, "heading", () => bigLabel(ctx, text, y, elScale(d, "heading")));
 }
 
 const blocksOf = (d, pos = "bottom") => {
@@ -160,7 +180,7 @@ function blocksFit(ctx, d, pos) {
   const blocks = blocksOf(d, pos);
   if (!blocks.length) return { h: 0, k: 1, blocks };
   let k = pageScale(d, CUR_KIND);
-  const measure = () => 40 + blocks.reduce((h, b) => h + drawBlock(ctx, b, 0, k, false) + BLOCK_GAP, 0);
+  const measure = () => 40 + blocks.reduce((h, b) => h + drawBlock(ctx, b, 0, k * elScale(d, `blk-${b.id}`), false) + BLOCK_GAP, 0);
   let h = measure();
   while (h > 460 && k > 0.55) { k -= 0.05; h = measure(); }
   return { h, k, blocks };
@@ -173,7 +193,7 @@ function drawTopBlocks(ctx, d, y0) {
   const { h, k, blocks } = blocksFit(ctx, d, "top");
   if (!blocks.length) return 0;
   let y = y0 + 34; // breathing room under the page title
-  blocks.forEach((b) => { y += drawBlock(ctx, b, y, k, true) + BLOCK_GAP; });
+  blocks.forEach((b) => { y += withEl(ctx, d, `blk-${b.id}`, () => drawBlock(ctx, b, y, k * elScale(d, `blk-${b.id}`), true)) + BLOCK_GAP; });
   ctx.fillStyle = DOT;
   ctx.fillRect(PAD, y - 10, MAXW, 2);
   return h + 34;
@@ -185,7 +205,7 @@ function drawPageBlocks(ctx, d, bottom) {
   ctx.fillStyle = DOT;
   ctx.fillRect(PAD, y, MAXW, 2);
   y += 30;
-  blocks.forEach((b) => { y += drawBlock(ctx, b, y, k, true) + BLOCK_GAP; });
+  blocks.forEach((b) => { y += withEl(ctx, d, `blk-${b.id}`, () => drawBlock(ctx, b, y, k * elScale(d, `blk-${b.id}`), true)) + BLOCK_GAP; });
 }
 
 // "Taille du texte" of one page (visual.page_text_scale[kind]), 0.7 – 1.4
@@ -250,16 +270,16 @@ function swipeHint(ctx, label = L.swipe) {
 
 // Page title: wraps (and honours typed line breaks) and shrinks so it never leaves the page.
 // Returns the extra height it takes beyond one line, so the page content moves down accordingly.
-function bigLabel(ctx, text, y) {
+function bigLabel(ctx, text, y, s = 1) {
   const fam = titleFontFamily();
   const w = MAXW - 34;
-  let px = 44;
+  let px = Math.round(44 * s);
   ctx.font = `800 ${px}px ${fam}`;
-  while (px > 28 && wrapWords(ctx, text, w).length > 2) { px -= 2; ctx.font = `800 ${px}px ${fam}`; }
+  while (px > 28 * Math.min(1, s) && wrapWords(ctx, text, w).length > 2) { px -= 2; ctx.font = `800 ${px}px ${fam}`; }
   const lh = Math.round(px * 1.18);
   const lines = Math.min(5, wrapWords(ctx, text, w).length);
   ctx.fillStyle = BRICK;
-  ctx.fillRect(PAD, y - 34, 14, 40);
+  ctx.fillRect(PAD, y - Math.round(px * 0.77), 14, Math.round(px * 0.9));
   ctx.fillStyle = BORDEAUX;
   drawParagraph(ctx, text, PAD + 34, y, w, lh, false, 5);
   return Math.max(0, (lines - 1) * lh);
@@ -270,16 +290,16 @@ function coverPage(ctx, d, images, n, total) {
   const top = drawHeader(ctx, d.post, images);
   beginShift(ctx, d);
   const withSrc = d.content.source && showSource(d, "cover");
-  let srcPx = 30;
+  let srcPx = Math.round(30 * elScale(d, "source"));
   let srcH = withSrc ? sourceBlock(ctx, d, PAD, 0, MAXW, srcPx, false) : 0;
-  while (srcH > 330 && srcPx > 20) { srcPx -= 2; srcH = sourceBlock(ctx, d, PAD, 0, MAXW, srcPx, false); }
+  while (srcH > 330 && srcPx > 18) { srcPx -= 2; srcH = sourceBlock(ctx, d, PAD, 0, MAXW, srcPx, false); }
   // the title area ends above the sources (several long sources make the title a little smaller)
   const res = blocksReserve(ctx, d);
   const titleOn = !isHidden(d, "cover.title");
   const area = { top: Math.max(top + 140, 360), bottom: Math.min(VH - 360, VH - 190 - (withSrc ? srcH + 64 : 0)) - res };
   area.top += drawTopBlocks(ctx, d, Math.max(top + 60, 280));
   ctx.fillStyle = BORDEAUX;
-  let px = Math.round(84 * pageScale(d, "cover"));
+  let px = Math.round(84 * pageScale(d, "cover") * elScale(d, "title"));
   const fam = titleFontFamily();
   ctx.font = `800 ${px}px ${fam}`;
   // a long title (or one with line breaks) gets smaller until it fits in the page
@@ -293,10 +313,15 @@ function coverPage(ctx, d, images, n, total) {
   const y0 = area.top + Math.max(0, ((area.bottom - area.top) - lines * lh) / 2) + px;
   let yEnd = area.top;
   if (titleOn) {
-    yEnd = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, maxLines);
-    drawRule(ctx, yEnd + 10);
+    yEnd = withEl(ctx, d, "title", () => {
+      ctx.fillStyle = BORDEAUX;
+      ctx.font = `800 ${px}px ${fam}`;
+      const e = drawParagraph(ctx, d.title, PAD, y0, MAXW, lh, false, maxLines);
+      drawRule(ctx, e + 10);
+      return e;
+    }) + elDy(d, "title"); // the sources follow the title
   }
-  if (withSrc) sourceBlock(ctx, d, PAD, yEnd + 40, MAXW, srcPx, true);
+  if (withSrc) withEl(ctx, d, "source", () => sourceBlock(ctx, d, PAD, yEnd + 40, MAXW, srcPx, true));
   drawPageBlocks(ctx, d, VH - 150);
   swipeHint(ctx);
   pageCounter(ctx, n, total);
@@ -316,6 +341,10 @@ function essentialPage(ctx, d, images, n, total) {
   // short facts not already shown on the "chiffres" page
   const facts = d.factsFree && !isHidden(d, "essential.facts") ? (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3) : [];
   const summaryOn = !isHidden(d, "essential.summary");
+  const sFig = elScale(d, "figure");
+  const sSum = elScale(d, "summary");
+  const sFacts = elScale(d, "facts");
+  const sSrc = elScale(d, "source");
   const src = showSource(d, "essential") ? sourceLine(d) : "";
 
   // measure everything at a given summary size, then pick the largest size that fits
@@ -323,15 +352,15 @@ function essentialPage(ctx, d, images, n, total) {
     let h = 0;
     const parts = [];
     if (fig) {
-      ctx.font = `${Math.round(190 * k)}px Anton`;
-      const px = fitFontSize(ctx, fig, "Anton", Math.round(190 * k), MAXW, 80);
+      ctx.font = `${Math.round(190 * k * sFig)}px Anton`;
+      const px = fitFontSize(ctx, fig, "Anton", Math.round(190 * k * sFig), MAXW, 60);
       parts.push({ k: "fig", px, h: px });
       h += px;
       if (figLabel) {
-        ctx.font = "500 34px Outfit";
+        ctx.font = `500 ${Math.round(34 * sFig)}px Outfit`;
         const lines = Math.min(3, wrapWords(ctx, figLabel, MAXW).length);
-        parts.push({ k: "figLabel", lines, h: 20 + lines * 46 });
-        h += 20 + lines * 46;
+        parts.push({ k: "figLabel", lines, h: 20 + lines * 46 * sFig });
+        h += 20 + lines * 46 * sFig;
       }
       h += 50;
     }
@@ -343,23 +372,24 @@ function essentialPage(ctx, d, images, n, total) {
       h += lines * lh;
     }
     if (facts.length) {
-      ctx.font = "600 34px Outfit";
-      const fh = facts.reduce((a, f) => a + Math.min(2, wrapWords(ctx, f, MAXW - 50).length) * 44 + 22, 0);
+      ctx.font = `600 ${Math.round(34 * sFacts)}px Outfit`;
+      const fh = facts.reduce((a, f) => a + Math.min(2, wrapWords(ctx, f, MAXW - 50).length) * 44 * sFacts + 22, 0);
       parts.push({ k: "facts", h: 60 + fh });
       h += 60 + fh;
     }
-    if (src) { const sh = 70 + sourceBlock(ctx, d, PAD, 0, MAXW, 24, false); parts.push({ k: "src", h: sh }); h += sh; }
+    if (src) { const sh = 70 + sourceBlock(ctx, d, PAD, 0, MAXW, Math.round(24 * sSrc), false); parts.push({ k: "src", h: sh }); h += sh; }
     return { h, parts };
   };
-  let sumPx = Math.round(64 * k);
+  let sumPx = Math.round(64 * k * sSum);
   let lay = layout(sumPx);
-  while (sumPx > 30 && lay.h > areaBottom - areaTop) { sumPx -= 2; lay = layout(sumPx); }
+  while (sumPx > 30 * Math.min(1, sSum) && lay.h > areaBottom - areaTop) { sumPx -= 2; lay = layout(sumPx); }
 
   const fitE = lay.h > areaBottom - areaTop ? Math.max(0.5, (areaBottom - areaTop) / lay.h) : 1;
   ctx.save();
   if (fitE < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitE, fitE); ctx.translate(-PAD, -areaTop); }
   let y = areaTop + Math.max(0, (areaBottom - areaTop - lay.h) / 2); // centred block
-  lay.parts.forEach((p) => {
+  const PART_EL = { fig: "figure", figLabel: "figure", sum: "summary", facts: "facts", src: "source" };
+  lay.parts.forEach((p) => withEl(ctx, d, PART_EL[p.k], () => {
     if (p.k === "fig") {
       ctx.fillStyle = BRICK;
       ctx.font = `${p.px}px Anton`;
@@ -367,8 +397,8 @@ function essentialPage(ctx, d, images, n, total) {
       y += p.px;
     } else if (p.k === "figLabel") {
       ctx.fillStyle = INK;
-      ctx.font = "500 34px Outfit";
-      drawParagraph(ctx, figLabel, PAD, y + 20 + 34, MAXW, 46, false, 3);
+      ctx.font = `500 ${Math.round(34 * sFig)}px Outfit`;
+      drawParagraph(ctx, figLabel, PAD, y + 20 + 34 * sFig, MAXW, 46 * sFig, false, 3);
       y += p.h + 50;
     } else if (p.k === "sum") {
       if (!fig) y += 0;
@@ -381,16 +411,16 @@ function essentialPage(ctx, d, images, n, total) {
       facts.forEach((f, i) => {
         drawBullet(ctx, PAD, y + 8, 18, i % 2 === 0 ? BRICK : CORAL);
         ctx.fillStyle = BORDEAUX;
-        ctx.font = "600 34px Outfit";
-        const end = drawParagraph(ctx, f, PAD + 50, y + 30, MAXW - 50, 44, false, 2);
-        y = end - 44 + 22 + 14;
+        ctx.font = `600 ${Math.round(34 * sFacts)}px Outfit`;
+        const end = drawParagraph(ctx, f, PAD + 50, y + 30 * sFacts, MAXW - 50, 44 * sFacts, false, 2);
+        y = end - 44 * sFacts + 22 + 14;
       });
     } else if (p.k === "src") {
       drawRule(ctx, y + 40);
-      sourceBlock(ctx, d, PAD, y + 62, MAXW, 24, true);
+      sourceBlock(ctx, d, PAD, y + 62, MAXW, Math.round(24 * sSrc), true);
       y += p.h;
     }
-  });
+  }));
   ctx.restore();
   drawPageBlocks(ctx, d, RB);
   swipeHint(ctx);
@@ -412,17 +442,21 @@ function dataPage(ctx, d, images, n, total) {
     const note = isHidden(d, "data.note") ? "" : clean(chart.note);
     const facts = isHidden(d, "data.facts") ? [] : (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3);
     const chartOn = !isHidden(d, "data.chart");
+    const sCT = elScale(d, "chartTitle");
+    const sChart = elScale(d, "chart");
+    const sNote = elScale(d, "note");
+    const sFacts = elScale(d, "facts");
     const vertical = chart.type !== "pie" && chart.items.every((i) => /^(\d{4}|[TSQH]\d[\s-]?\d{2,4}|\d{4}[\s-]\d{2,4})$/i.test(String(i.label).trim()));
     // few bars → taller rows so the chart fills the page instead of leaving a hole
     const rowMax = chart.items.length <= 3 ? 190 : 150;
-    const natural = !chartOn ? 0 : chart.type === "pie" || vertical ? 600 : Math.max(260, chart.items.length * rowMax);
+    const natural = Math.round((!chartOn ? 0 : chart.type === "pie" || vertical ? 600 : Math.max(260, chart.items.length * rowMax)) * sChart);
     const avail = areaBottom - areaTop;
 
     const measure = (notePx, chartH, factPx) => {
       let h = 0;
-      ctx.font = "600 22px Outfit";
+      ctx.font = `600 ${Math.round(22 * sCT)}px Outfit`;
       const tl = ctitle ? Math.min(2, wrapWords(ctx, ctitle, MAXW).length) : 0;
-      h += tl ? tl * 32 + 26 : 0;
+      h += tl ? tl * 32 * sCT + 26 : 0;
       h += chartH;
       ctx.font = `italic 500 ${notePx}px Outfit`;
       const nl = note ? wrapWords(ctx, note, MAXW).length : 0;
@@ -433,15 +467,15 @@ function dataPage(ctx, d, images, n, total) {
       h += facts.length ? 60 + fh : 0;
       return { h, tl, nl, flh };
     };
-    let notePx = Math.round(34 * k);
-    let factPx = Math.round(32 * k);
+    let notePx = Math.round(34 * k * sNote);
+    let factPx = Math.round(32 * k * sFacts);
     let chartH = natural;
     let m = measure(notePx, chartH, factPx);
-    while (m.h > avail && notePx > 22) { notePx -= 2; m = measure(notePx, chartH, factPx); }
-    while (chartOn && m.h > avail && chartH > 220) { chartH -= 20; m = measure(notePx, chartH, factPx); }
+    while (m.h > avail && notePx > 22 * Math.min(1, sNote)) { notePx -= 2; m = measure(notePx, chartH, factPx); }
+    while (chartOn && m.h > avail && chartH > 220 * Math.min(1, sChart)) { chartH -= 20; m = measure(notePx, chartH, factPx); }
     // room left: enlarge the reading sentence and the facts a little
-    while (notePx < 40 * k && measure(notePx + 2, chartH, factPx).h <= avail) { notePx += 2; m = measure(notePx, chartH, factPx); }
-    while (factPx < 38 * k && measure(notePx, chartH, factPx + 2).h <= avail) { factPx += 2; m = measure(notePx, chartH, factPx); }
+    while (notePx < 40 * k * sNote && measure(notePx + 2, chartH, factPx).h <= avail) { notePx += 2; m = measure(notePx, chartH, factPx); }
+    while (factPx < 38 * k * sFacts && measure(notePx, chartH, factPx + 2).h <= avail) { factPx += 2; m = measure(notePx, chartH, factPx); }
     // whatever is still free is spread between the sections (not above the chart), the rest stays at the bottom
     const free = Math.max(0, avail - m.h);
     const gaps = (m.nl ? 1 : 0) + (facts.length ? 1 : 0);
@@ -453,28 +487,35 @@ function dataPage(ctx, d, images, n, total) {
     if (fitF < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitF, fitF); ctx.translate(-PAD, -areaTop); }
     let y = areaTop;
     if (m.tl) {
-      ctx.fillStyle = "#8a6a62";
-      ctx.font = "600 22px Outfit";
-      const prev = ctx.letterSpacing;
-      ctx.letterSpacing = "3px";
-      wrapWords(ctx, ctitle, MAXW).slice(0, 2).forEach((ln, i) => ctx.fillText(ln.join(" "), PAD, y + 22 + i * 32));
-      ctx.letterSpacing = prev || "0px";
-      y += m.tl * 32 + 26;
+      withEl(ctx, d, "chartTitle", () => {
+        ctx.fillStyle = "#8a6a62";
+        ctx.font = `600 ${Math.round(22 * sCT)}px Outfit`;
+        const prev = ctx.letterSpacing;
+        ctx.letterSpacing = "3px";
+        wrapWords(ctx, ctitle, MAXW).slice(0, 2).forEach((ln, i) => ctx.fillText(ln.join(" "), PAD, y + 22 * sCT + i * 32 * sCT));
+        ctx.letterSpacing = prev || "0px";
+      });
+      y += m.tl * 32 * sCT + 26;
     }
     if (!chartOn) { /* chart removed by the user */ }
-    else if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, MAXW, chartH);
-    else drawBarChart(ctx, chart, PAD, y, MAXW, chartH, { rowMax });
+    else withEl(ctx, d, "chart", () => {
+      if (chart.type === "pie") drawPieChart(ctx, chart, PAD, y, MAXW, chartH);
+      else drawBarChart(ctx, chart, PAD, y, MAXW, chartH, { rowMax: Math.round(rowMax * sChart) });
+    });
     y += chartH;
     if (m.nl) {
       y += gapExtra;
-      ctx.fillStyle = "#4a3a36";
-      ctx.font = `italic 500 ${notePx}px Outfit`;
-      const lh = Math.round(notePx * 1.35);
-      drawParagraph(ctx, note, PAD, y + 50 + notePx, MAXW, lh, false, m.nl);
-      y += 50 + m.nl * lh;
+      withEl(ctx, d, "note", () => {
+        ctx.fillStyle = "#4a3a36";
+        ctx.font = `italic 500 ${notePx}px Outfit`;
+        drawParagraph(ctx, note, PAD, y + 50 + notePx, MAXW, Math.round(notePx * 1.35), false, m.nl);
+      });
+      y += 50 + m.nl * Math.round(notePx * 1.35);
     }
     if (facts.length) {
       y += 60 + gapExtra;
+      const fdy = elDy(d, "facts");
+      y += fdy;
       facts.forEach((f, i) => {
         drawBullet(ctx, PAD, y + 6, 18, i % 2 === 0 ? BRICK : CORAL);
         ctx.fillStyle = BORDEAUX;
@@ -482,6 +523,7 @@ function dataPage(ctx, d, images, n, total) {
         const end = drawParagraph(ctx, f, PAD + 50, y + factPx - 4, MAXW - 50, m.flh, false, 2);
         y = end - m.flh + 20 + 14;
       });
+      y -= fdy;
     }
     ctx.restore();
   } else {
@@ -490,20 +532,25 @@ function dataPage(ctx, d, images, n, total) {
     const items = isHidden(d, "data.facts") ? [] : (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 4);
     const date = isHidden(d, "data.date") ? "" : clean(d.v.important_date);
     if (date) {
-      ctx.fillStyle = CORAL;
-      const px = fitFontSize(ctx, date, "Anton", 130, MAXW, 60);
-      ctx.fillText(date, PAD, y + px * 0.85);
-      ctx.fillStyle = INK;
-      ctx.font = "500 32px Outfit";
-      ctx.fillText(L.deadline, PAD, y + px + 30);
+      const sD = elScale(d, "date");
+      const px = fitFontSize(ctx, date, "Anton", Math.round(130 * sD), MAXW, 50);
+      withEl(ctx, d, "date", () => {
+        ctx.fillStyle = CORAL;
+        ctx.font = `${px}px Anton`;
+        ctx.fillText(date, PAD, y + px * 0.85);
+        ctx.fillStyle = INK;
+        ctx.font = `500 ${Math.round(32 * sD)}px Outfit`;
+        ctx.fillText(L.deadline, PAD, y + px + 30);
+      });
       y += px + 110;
     }
+    y += elDy(d, "facts");
     const avail = VH - 220 - res - y;
     const per = items.length ? avail / items.length : 0;
     items.forEach((t, i) => {
       ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
       drawBullet(ctx, PAD, y + 8, 18, ctx.fillStyle);
-      const b = fitBlock(ctx, t, 600, Math.round(44 * k), 26, per - 30, 1.3, MAXW - 50);
+      const b = fitBlock(ctx, t, 600, Math.round(44 * k * elScale(d, "facts")), 22, per - 30, 1.3, MAXW - 50);
       ctx.fillStyle = INK;
       drawParagraph(ctx, b.text, PAD + 50, y + b.px * 0.8, MAXW - 50, b.lh, false, b.maxLines);
       y += per;
@@ -521,18 +568,25 @@ function pointsPage(ctx, d, images, n, total, points, pageTitle) {
   let y = top + 180 + drawTopBlocks(ctx, d, top + 140);
   const res = blocksReserve(ctx, d);
   const per = (VH - 220 - res - y) / points.length;
+  const pid = (p) => `pt-${d.content.points.indexOf(p)}`;
+  const valH = (p) => (p.value ? fitFontSize(ctx, p.value, "Anton", Math.round(120 * k * elScale(d, pid(p))), MAXW, 50) + 20 : 0);
+  // common size: the largest that fits every point, so the points look alike
+  const common = Math.min(...points.map((p) => (p.text ? fitBlock(ctx, p.text, 600, Math.round(54 * k), 24, per - 90 - valH(p)).px : 999)));
   points.forEach((p, i) => {
-    drawLabel(ctx, p.label.toUpperCase(), PAD, y);
-    let fy = 0;
-    if (p.value) { // "chiffre clé" section
-      ctx.fillStyle = BRICK;
-      const px = fitFontSize(ctx, p.value, "Anton", Math.round(120 * k), MAXW, 60);
-      ctx.fillText(p.value, PAD, y + 30 + px * 0.9);
-      fy = px + 20;
-    }
-    ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
-    const b = fitBlock(ctx, p.text, 600, Math.round(54 * k), 26, per - 90 - fy);
-    if (p.text) drawParagraph(ctx, b.text, PAD, y + 30 + fy + b.px, MAXW, b.lh, false, b.maxLines);
+    const sp = elScale(d, pid(p));
+    withEl(ctx, d, pid(p), () => {
+      drawLabel(ctx, p.label.toUpperCase(), PAD, y);
+      let fy = 0;
+      if (p.value) { // "chiffre clé" section
+        ctx.fillStyle = BRICK;
+        const px = fitFontSize(ctx, p.value, "Anton", Math.round(120 * k * sp), MAXW, 50);
+        ctx.fillText(p.value, PAD, y + 30 + px * 0.9);
+        fy = px + 20;
+      }
+      ctx.fillStyle = i % 2 === 0 ? BORDEAUX : INK;
+      const b = fitBlock(ctx, p.text, 600, Math.round(Math.min(common, 54 * k) * sp), 20, per - 90 - fy + (sp > 1 ? 400 : 0));
+      if (p.text) drawParagraph(ctx, b.text, PAD, y + 30 + fy + b.px, MAXW, b.lh, false, b.maxLines);
+    });
     if (i < points.length - 1) {
       ctx.fillStyle = DOT;
       ctx.fillRect(PAD, y + per - 40, MAXW, 2);
@@ -553,12 +607,12 @@ function takeawayPage(ctx, d, images, n, total) {
   const area = { top: top + 175, bottom: (ctaOn ? VH - 440 : VH - 200) - blocksReserve(ctx, d) };
   area.top += drawTopBlocks(ctx, d, top + 140);
   const QH = 120; // room taken by each quote mark
-  const b = fitBlock(ctx, text, 700, Math.round(64 * pageScale(d, "takeaway")), 30, area.bottom - area.top - QH * 2, 1.25);
+  const b = fitBlock(ctx, text, 700, Math.round(64 * pageScale(d, "takeaway") * elScale(d, "quote")), 24, area.bottom - area.top - QH * 2, 1.25);
   const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
   const blockH = QH + lines * b.lh + QH;
   // the quote + text block is centred in the free space, so there is no hole under the opening quote
   const y0 = area.top + Math.max(0, (area.bottom - area.top - blockH) / 2);
-  if (text) {
+  if (text) withEl(ctx, d, "quote", () => {
   ctx.fillStyle = BRICK;
   ctx.font = "220px Anton";
   ctx.fillText("“", PAD - 10, y0 + 175);
@@ -570,7 +624,7 @@ function takeawayPage(ctx, d, images, n, total) {
   ctx.textAlign = "right";
   ctx.fillText("”", VW - PAD + 10, y0 + QH + lines * b.lh + 175);
   ctx.textAlign = "left";
-  }
+  });
   drawPageBlocks(ctx, d, ctaOn ? VH - 420 : VH - 180);
   endShift(ctx); // the closing question stays in place
   if (!ctaOn) {
@@ -579,18 +633,21 @@ function takeawayPage(ctx, d, images, n, total) {
   }
   drawRule(ctx, VH - 400);
   // closing texts wrap (2 lines max each) instead of running off the page
-  ctx.fillStyle = INK;
-  ctx.font = "600 34px Outfit";
-  const qEnd = drawParagraph(ctx, clean(d.v.cta_question) || L.ctaQ, PAD, VH - 320, MAXW, 42, false, 2);
-  ctx.fillStyle = "#4a3a36";
-  ctx.font = "400 30px Outfit";
-  drawParagraph(ctx, clean(d.v.cta_text) || L.cta, PAD, Math.max(VH - 270, qEnd + 8), MAXW, 38, false, 2);
+  const sC = elScale(d, "cta");
+  withEl(ctx, d, "cta", () => {
+    ctx.fillStyle = INK;
+    ctx.font = `600 ${Math.round(34 * sC)}px Outfit`;
+    const qEnd = drawParagraph(ctx, clean(d.v.cta_question) || L.ctaQ, PAD, VH - 320, MAXW, Math.round(42 * sC), false, 2);
+    ctx.fillStyle = "#4a3a36";
+    ctx.font = `400 ${Math.round(30 * sC)}px Outfit`;
+    drawParagraph(ctx, clean(d.v.cta_text) || L.cta, PAD, Math.max(VH - 270, qEnd + 8), MAXW, Math.round(38 * sC), false, 2);
+  });
   if (!isHidden(d, "takeaway.signature")) drawSignature(ctx);
 }
 
 // Page added by the user ("Ajouter une page"): texte, chiffre clé, citation or liste
 function extraPage(ctx, d, images, n, total, x) {
-  const k = pageScale(d, `extra-${x.id}`);
+  const k = pageScale(d, `extra-${x.id}`) * elScale(d, "body");
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
   const title = clean(x.title);
@@ -600,6 +657,9 @@ function extraPage(ctx, d, images, n, total, x) {
   const avail = areaBottom - areaTop;
   const text = clean(x.text);
   const type = x.type || "text";
+  ctx.save(); // the page body moves with its own "Position"
+  const bodyDy = elDy(d, "body");
+  if (bodyDy) ctx.translate(0, bodyDy);
 
   if (type === "figure") {
     const value = clean(x.value);
@@ -666,6 +726,7 @@ function extraPage(ctx, d, images, n, total, x) {
     ctx.font = `500 ${b.px}px Outfit`;
     drawParagraph(ctx, b.text, PAD, y0 + b.px, MAXW, b.lh, false, b.maxLines);
   }
+  ctx.restore();
   drawPageBlocks(ctx, d, VH - 190);
   swipeHint(ctx);
 }

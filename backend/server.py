@@ -1226,7 +1226,7 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
                       "labels", "carousel_labels", "source_label", "date_label",
                       "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks",
-                      "extra_sources", "page_source", "hidden", "page_order"}
+                      "extra_sources", "page_source", "hidden", "page_order", "el"}
 EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
@@ -1389,6 +1389,9 @@ Ce que tu peux modifier:
   "k:extra-<id>"). Renvoie l'objet complet.
 - parties ajoutées DANS une page du carrousel (sous son contenu): visual.page_blocks {{"<page>": [{{"id", "type":
   "text"|"figure"|"quote"|"list", "title": "sous-titre", "text", "value", "label"}}]}} (max 4 par page, couverture comprise); "pos": "top" (en haut de la page) ou "bottom" (en bas, défaut).
+- taille et position de CHAQUE élément d'une page du carrousel: visual.el {{"<page>:<élément>": {{"s": 0.5 à 1.6, "y": -300 à 300}}}}
+  éléments: cover:title, cover:source, <page>:heading, essential:figure|summary|facts|source, data:chartTitle|chart|note|facts|date,
+  points:pt-<n° du point>, takeaway:quote|cta, extra-<id>:body, <page>:blk-<id> (parties ajoutées). Renvoie l'objet complet.
 - ordre des pages du carrousel: visual.page_order ["cover", "data", "essential", "points", "extra-<id>", "takeaway"] (null = ordre d'origine).
 - retirer/remettre un élément d'une page du carrousel: visual.hidden {{"cover.title", "<page>.heading", "essential.summary",
   "essential.figure", "essential.facts", "data.chartTitle", "data.chart", "data.note", "data.date", "data.facts",
@@ -1461,6 +1464,24 @@ Renvoie STRICTEMENT ce JSON:
         vis["extra_sources"] = [str(x)[:120] for x in es[:5] if isinstance(x, str)] if isinstance(es, list) else None
         if vis["extra_sources"] is None:
             vis.pop("extra_sources")
+    if "el" in vis:
+        el = vis["el"]
+        if isinstance(el, dict):
+            clean_el = {}
+            for k, val in el.items():
+                if isinstance(val, dict):
+                    e = {}
+                    try:
+                        if "s" in val:
+                            e["s"] = max(0.5, min(1.6, float(val["s"])))
+                        if "y" in val:
+                            e["y"] = max(-400, min(400, int(float(val["y"]))))
+                    except (TypeError, ValueError):
+                        continue
+                    clean_el[str(k)[:60]] = e
+            vis["el"] = {**((post.get("visual") or {}).get("el") or {}), **clean_el}
+        else:
+            vis.pop("el")
     if "page_order" in vis:
         po = vis["page_order"]
         if isinstance(po, list):
