@@ -487,69 +487,45 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     blocks.forEach((b) => rows.push([`blk-${b.id}`, `Partie « ${String(b.title || EXTRA_TYPES.find((t) => t.type === b.type)?.label || "").slice(0, 30)} »`]));
     return rows;
   };
+  // Element settings are made by clicking on the preview; here only what a click cannot do:
+  // bring back hidden elements, and reset the page's element settings.
   const elPanel = (kind) => {
     const all = v.el || {};
-    const set = (id, patch) => updateVisual({ el: { ...all, [`${kind}:${id}`]: { ...(all[`${kind}:${id}`] || {}), ...patch } } });
     const rows = elementsOf(kind);
-    const changed = rows.filter(([id]) => all[`${kind}:${id}`]).length;
+    const changed = rows.filter(([id]) => all[`${kind}:${id}`]).map(([id]) => id);
+    const hiddenRows = rows.filter(([id]) => (id === "source" ? (v.page_source || {})[kind] === false : hiddenMap[`${kind}.${id}`]));
+    const show = (id) => (id === "source"
+      ? updateVisual({ page_source: { ...(v.page_source || {}), [kind]: true } })
+      : updateVisual({ hidden: { ...hiddenMap, [`${kind}.${id}`]: false } }));
     return (
-      <details className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2" data-testid="visual-el-panel">
-        <summary className="cursor-pointer select-none text-xs font-semibold text-forsides-ink">
-          Taille, position et affichage de chaque élément {changed > 0 && <span className="font-normal text-forsides-red">({changed} modifié{changed > 1 ? "s" : ""})</span>}
-        </summary>
-        <div className="mt-2 space-y-3">
-          {rows.map(([id, label]) => {
-            const cur = all[`${kind}:${id}`] || {};
-            const sz = Number(cur.s) || 1;
-            const y = Number(cur.y) || 0;
-            const x = Number(cur.x) || 0;
-            const hKey = `${kind}.${id}`;
-            const isOff = id === "source" ? (v.page_source || {})[kind] === false : Boolean(hiddenMap[hKey]);
-            const toggleOff = (off) => (id === "source"
-              ? updateVisual({ page_source: { ...(v.page_source || {}), [kind]: !off } })
-              : updateVisual({ hidden: { ...hiddenMap, [hKey]: off } }));
-            return (
-              <div key={id} className="space-y-1" data-testid={`visual-el-${id}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`text-xs font-medium ${isOff ? "text-slate-400 line-through" : "text-forsides-ink"}`}>{label}</span>
-                  {id !== "body" && (
-                    <label className="ml-auto inline-flex items-center gap-1 text-[11px] text-forsides-slate">
-                      <input type="checkbox" checked={isOff} onChange={(e) => toggleOff(e.target.checked)} /> Masquer
-                    </label>
-                  )}
-                  {(sz !== 1 || y !== 0 || x !== 0) && (
-                    <button type="button" onClick={() => {
-                      const next = { ...all }; delete next[`${kind}:${id}`]; updateVisual({ el: next });
-                    }} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-forsides-red">
-                      <RotateCcw className="h-3 w-3" /> Rétablir
-                    </button>
-                  )}
-                </div>
-                <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
-                  <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
-                    <span className="w-14 shrink-0">Taille</span>
-                    <input type="range" min={0.5} max={1.6} step={0.05} value={sz} aria-label={`Taille : ${label}`}
-                      onChange={(e) => set(id, { s: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-                    <NumInput value={sz} min={50} max={160} scale={100} suffix="%" label={`Taille : ${label} (%)`} className="w-14" onChange={(n) => set(id, { s: n })} />
-                  </label>
-                  <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
-                    <span className="w-14 shrink-0">Horizontal</span>
-                    <input type="range" min={-400} max={400} step={5} value={x} aria-label={`Position horizontale : ${label}`}
-                      onChange={(e) => set(id, { x: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-                    <NumInput value={x} min={-500} max={500} label={`Horizontal : ${label}`} className="w-14" onChange={(n) => set(id, { x: n })} />
-                  </label>
-                  <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
-                    <span className="w-14 shrink-0">Vertical</span>
-                    <input type="range" min={-300} max={300} step={5} value={y} aria-label={`Position : ${label}`}
-                      onChange={(e) => set(id, { y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-                    <NumInput value={y} min={-400} max={400} label={`Vertical : ${label}`} className="w-14" onChange={(n) => set(id, { y: n })} />
-                  </label>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </details>
+      <div className="space-y-2 rounded-lg bg-slate-50 px-3 py-2 text-xs ring-1 ring-slate-200" data-testid="visual-el-panel">
+        <p className="text-forsides-slate">
+          <span className="font-semibold text-forsides-ink">Astuce :</span> cliquez sur un élément de l'aperçu pour régler
+          sa taille et sa position, le masquer ou le supprimer.
+        </p>
+        {hiddenRows.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" data-testid="visual-hidden-list">
+            <span className="font-medium text-forsides-ink">Éléments masqués :</span>
+            {hiddenRows.map(([id, label]) => (
+              <button key={id} type="button" onClick={() => show(id)} title="Afficher à nouveau"
+                className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-0.5 text-forsides-slate ring-1 ring-slate-200 hover:text-forsides-red">
+                <RotateCcw className="h-3 w-3" /> {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {changed.length > 0 && (
+          <button type="button" data-testid="visual-el-reset-page"
+            onClick={() => {
+              const next = { ...all };
+              changed.forEach((id) => delete next[`${kind}:${id}`]);
+              updateVisual({ el: next });
+            }}
+            className="inline-flex items-center gap-1 font-medium text-forsides-slate hover:text-forsides-red">
+            <RotateCcw className="h-3 w-3" /> Rétablir la taille et la position de tous les éléments de la page ({changed.length})
+          </button>
+        )}
+      </div>
     );
   };
 
