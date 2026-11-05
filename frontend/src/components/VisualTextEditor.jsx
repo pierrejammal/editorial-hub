@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { resolveContent, hasChart } from "@/lib/visualRender";
-import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Columns2 } from "lucide-react";
 
 const inputCls =
   "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-forsides-red focus:ring-2 focus:ring-forsides-red/20";
@@ -20,7 +20,24 @@ const EXTRA_TYPES = [
   { type: "figure", label: "Chiffre clé", icon: Hash, title: "Le chiffre" },
   { type: "quote", label: "Citation", icon: Quote, title: "Ils l'ont dit" },
   { type: "list", label: "Liste", icon: List, title: "En bref" },
+  { type: "columns", label: "2 colonnes", icon: Columns2, title: "" },
 ];
+// the two columns of a "2 colonnes" section or page: a bold title + its text each
+const columnsFields = (x, set) => (
+  <div className="grid gap-2 sm:grid-cols-2" data-testid="visual-columns-fields">
+    {[1, 2].map((n) => (
+      <div key={n} className="space-y-1.5 rounded-lg bg-white p-2 ring-1 ring-slate-200">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-slate-400">Colonne {n}</p>
+        <textarea rows={1} value={x[`col${n}t`] || ""} placeholder={n === 1 ? "Titre (ex. ALD exonérantes :)" : "Titre (ex. ALD non exonérantes :)"}
+          data-testid={`visual-col${n}-title`} onChange={(e) => set({ [`col${n}t`]: e.target.value })}
+          className="w-full resize-y rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold outline-none focus:border-forsides-red" />
+        <textarea rows={4} value={x[`col${n}`] || ""} placeholder="Texte"
+          data-testid={`visual-col${n}-text`} onChange={(e) => set({ [`col${n}`]: e.target.value })}
+          className="w-full resize-y rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm outline-none focus:border-forsides-red" />
+      </div>
+    ))}
+  </div>
+);
 const PLACES = [
   ["auto", "Avant « À retenir »"], ["cover", "Après la couverture"], ["essential", "Après L'essentiel"],
   ["data", "Après Les chiffres"], ["points", "Après Décryptage"], ["end", "À la fin"],
@@ -388,9 +405,11 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                 <input value={b.label || ""} placeholder="Ce qu'il mesure" onChange={(e) => setB(i, { label: e.target.value })} className={inputCls} />
               </div>
             )}
+            {b.type === "columns" ? columnsFields(b, (patch) => setB(i, patch)) : (
             <textarea rows={b.type === "list" ? 4 : 3} value={b.text || ""} data-testid={`visual-block-text-${i}`}
               placeholder={b.type === "list" ? "Un élément par ligne" : b.type === "quote" ? "La citation" : b.type === "figure" ? "Commentaire (facultatif)" : "Texte"}
               onChange={(e) => setB(i, { text: e.target.value })} className={`${inputCls} resize-y`} />
+            )}
             {b.type === "quote" && (
               <input value={b.label || ""} placeholder="Auteur (facultatif)" onChange={(e) => setB(i, { label: e.target.value })} className={inputCls} />
             )}
@@ -571,11 +590,13 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
           </div>
         </div>
       )}
-      <div>
-        <Label>{x.type === "list" ? "Éléments (un par ligne)" : x.type === "quote" ? "Citation" : x.type === "figure" ? "Commentaire (facultatif)" : "Texte"}</Label>
-        <textarea data-testid="visual-extra-text" rows={x.type === "list" ? 5 : 4} value={x.text || ""}
-          onChange={(e) => setExtra(x.id, { text: e.target.value })} className={`${inputCls} resize-y`} />
-      </div>
+      {x.type === "columns" ? columnsFields(x, (patch) => setExtra(x.id, patch)) : (
+        <div>
+          <Label>{x.type === "list" ? "Éléments (un par ligne)" : x.type === "quote" ? "Citation" : x.type === "figure" ? "Commentaire (facultatif)" : "Texte"}</Label>
+          <textarea data-testid="visual-extra-text" rows={x.type === "list" ? 5 : 4} value={x.text || ""}
+            onChange={(e) => setExtra(x.id, { text: e.target.value })} className={`${inputCls} resize-y`} />
+        </div>
+      )}
       {x.type === "quote" && (
         <div>
           <Label>Auteur (facultatif)</Label>

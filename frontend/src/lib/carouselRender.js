@@ -154,7 +154,7 @@ function heading(ctx, d, text, y) {
 const blocksOf = (d, pos = "bottom") => {
   const all = (d.v.page_blocks || {})[CUR_KIND];
   return Array.isArray(all)
-    ? all.filter((b) => b && (clean(b.text) || clean(b.value)) && (b.pos === "top" ? "top" : "bottom") === pos).slice(0, 4) : [];
+    ? all.filter((b) => b && (clean(b.text) || clean(b.value) || clean(b.col1) || clean(b.col2) || clean(b.col1t) || clean(b.col2t)) && (b.pos === "top" ? "top" : "bottom") === pos).slice(0, 4) : [];
 };
 // one section; returns its height (draw = false only measures)
 function drawBlock(ctx, b, y, k, draw) {
@@ -188,6 +188,8 @@ function drawBlock(ctx, b, y, k, draw) {
       if (draw) { ctx.fillStyle = "#4a3a36"; ctx.font = "600 26px Outfit"; ctx.fillText(`— ${clean(b.label)}`, PAD + 70, y + h + 40); }
       h += 50;
     }
+  } else if (b.type === "columns") {
+    h += drawColumns(ctx, b, y + h, k, draw);
   } else if (b.type === "list") {
     text.split("\n").map((t) => t.trim()).filter(Boolean).slice(0, 6).forEach((t, i) => {
       if (draw) drawBullet(ctx, PAD, y + h + 8, 16, i % 2 === 0 ? BRICK : CORAL);
@@ -362,6 +364,47 @@ function bigLabel(ctx, text, y, s = 1) {
   ctx.fillStyle = BORDEAUX;
   drawParagraph(ctx, text, PAD + 34, y, w, lh, false, 5);
   return Math.max(0, (lines - 1) * lh);
+}
+
+// Two columns side by side, each with a bold title and its text (the shorter one is centred
+// vertically against the taller one). Returns the height (draw = false only measures).
+function drawColumns(ctx, b, y, k, draw, x0 = PAD, w = MAXW) {
+  const gap = Math.round(56 * Math.min(1, k));
+  const cw = (w - gap) / 2;
+  const tPx = Math.round(32 * k);
+  const bPx = Math.round(30 * k);
+  const tLh = Math.round(tPx * 1.3);
+  const bLh = Math.round(bPx * 1.38);
+  const col = (title, text) => {
+    ctx.font = `700 ${tPx}px Outfit`;
+    const tl = title ? Math.min(4, wrapWords(ctx, title, cw).length) : 0;
+    ctx.font = `400 ${bPx}px Outfit`;
+    const bl = text ? Math.min(12, wrapWords(ctx, text, cw).length) : 0;
+    return { title, text, tl, bl, h: tl * tLh + (tl && bl ? 6 : 0) + bl * bLh };
+  };
+  const cols = [col(clean(b.col1t), clean(b.col1)), col(clean(b.col2t), clean(b.col2))];
+  const h = Math.max(cols[0].h, cols[1].h);
+  if (draw) {
+    cols.forEach((c, i) => {
+      const cx = x0 + i * (cw + gap);
+      let cy = y + (h - c.h) / 2;
+      if (c.tl) {
+        ctx.fillStyle = BORDEAUX;
+        ctx.font = `700 ${tPx}px Outfit`;
+        drawParagraph(ctx, c.title, cx, cy + tPx, cw, tLh, false, 4);
+        cy += c.tl * tLh + 6;
+      }
+      if (c.bl) {
+        ctx.fillStyle = INK;
+        ctx.font = `400 ${bPx}px Outfit`;
+        drawParagraph(ctx, c.text, cx, cy + bPx, cw, bLh, false, 12);
+      }
+    });
+    // thin divider between the two columns
+    ctx.fillStyle = DOT;
+    ctx.fillRect(x0 + cw + gap / 2 - 1, y, 2, h);
+  }
+  return h;
 }
 
 // ---------- pages ----------
@@ -792,6 +835,12 @@ function extraPage(ctx, d, images, n, total, x) {
       ctx.font = "600 32px Outfit";
       ctx.fillText(`— ${author}`, PAD, end + 40);
     }
+  } else if (type === "columns") {
+    // bigger on a page of its own, fitted to the space and centred
+    let kk = k * 1.25;
+    let ch = drawColumns(ctx, x, 0, kk, false);
+    while (ch > avail && kk > 0.6) { kk -= 0.05; ch = drawColumns(ctx, x, 0, kk, false); }
+    drawColumns(ctx, x, areaTop + Math.max(0, (avail - ch) / 2), kk, true);
   } else if (type === "list") {
     const items = text.split("\n").map((t) => t.trim()).filter(Boolean).slice(0, 8);
     const per = items.length ? avail / items.length : 0;
