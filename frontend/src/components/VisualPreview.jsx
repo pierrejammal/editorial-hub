@@ -449,6 +449,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     const id = String(key || "").split(":").slice(1).join(":");
     if (id.startsWith("pt-")) return `Point ${Number(id.slice(3)) + 1}`;
     if (id.startsWith("div-")) return "Trait de séparation";
+    if (id.startsWith("sum-")) return `Résumé · paragraphe ${Number(id.slice(4)) + 1}`;
     if (id.startsWith("blk-")) return "Partie ajoutée";
     return EL_NAMES[id] || id;
   };
@@ -527,7 +528,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       .sort((a, b) => a.y0 - b.y0).map((b) => idOf(b.key)))];
     // L'essentiel and Les chiffres (with a chart): added sections swap with the page's own parts too
     const flow = kind === "essential" || (kind === "data" && hasChart(localPost));
-    const inGroup = (i) => SWAP_GROUPS[kind].includes(i) || i.startsWith("blk-");
+    const inGroup = (i) => SWAP_GROUPS[kind].includes(i) || i.startsWith("blk-") || i.startsWith("sum-");
     if (flow && inGroup(id)) return { kind, id, type: "part", list: onPage(inGroup) };
     if (id.startsWith("pt-")) return { kind, id, type: "point", list: onPage((i) => i.startsWith("pt-")) };
     if (id.startsWith("blk-")) return { kind, id, type: "block", list: onPage((i) => i.startsWith("blk-")) };

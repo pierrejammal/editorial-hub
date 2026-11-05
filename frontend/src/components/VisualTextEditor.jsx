@@ -719,6 +719,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       return `Partie ajoutée${b ? ` · ${EXTRA_TYPES.find((t) => t.type === b.type)?.label || ""}` : ""}`;
     }
     if (id.startsWith("div-")) return `Trait ${Number(id.slice(4)) + 1}`;
+    if (id.startsWith("sum-")) return `Résumé · paragraphe ${Number(id.slice(4)) + 1}`;
     if (id === "coverDate") return "Date";
     return EL_LABEL[id] || id;
   };
@@ -747,6 +748,16 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     }
     if (id === "figure") return keyFigure;
     if (id === "summary") return summaryField;
+    if (id.startsWith("sum-")) {
+      // one paragraph of the summary (paragraphs are separated by an empty line)
+      const paras = String(summary || "").split(/\n\s*\n/);
+      const i = Number(id.slice(4));
+      return (
+        <textarea rows={3} data-testid={`visual-edit-${id}`} value={paras[i] ?? ""}
+          onChange={(e) => { const next = [...paras]; next[i] = e.target.value; setCustom({ summary: next.join("\n\n") }); }}
+          className={`${inputCls} resize-y`} />
+      );
+    }
     if (id === "facts") return factsField(kind === "essential" ? "Faits clés (une ligne par fait)" : "Faits chiffrés (une ligne par fait)");
     if (id === "chart") return chartBlock;
     if (id === "note") return noteField;

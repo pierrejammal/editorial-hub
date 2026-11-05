@@ -170,8 +170,16 @@ function drawDividers(ctx, d, kind) {
 
 // order of the parts of a page chosen by the user ("Monter / Descendre" swaps two parts)
 function partOrder(d, kind, def) {
-  const o = (d.v.part_order || {})[kind];
+  let o = (d.v.part_order || {})[kind];
   if (!Array.isArray(o)) return def;
+  // the summary can be one part ("summary") or one part per paragraph ("sum-0", "sum-1"…)
+  const sums = def.filter((x) => x.startsWith("sum-"));
+  o = o.flatMap((x) => {
+    if (x === "summary" && sums.length) return sums;
+    if (x.startsWith("sum-") && !def.includes(x)) return def.includes("summary") ? ["summary"] : [];
+    return [x];
+  });
+  o = o.filter((x, i) => o.indexOf(x) === i);
   return [...o.filter((x) => def.includes(x)), ...def.filter((x) => !o.includes(x))];
 }
 
@@ -609,6 +617,8 @@ function essentialPage(ctx, d, images, n, total) {
   // short facts not already shown on the "chiffres" page
   const facts = d.factsFree && !isHidden(d, "essential.facts") ? (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3) : [];
   const summaryOn = !isHidden(d, "essential.summary");
+  const sumParas = String(d.content.summary || "").split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+  const sumIds = sumParas.length > 1 ? sumParas.map((_, i) => `sum-${i}`) : ["summary"];
   const sFig = elScale(d, "figure");
   const sSum = elScale(d, "summary");
   const sFacts = elScale(d, "facts");
@@ -635,9 +645,13 @@ function essentialPage(ctx, d, images, n, total) {
     if (d.content.summary && summaryOn) {
       ctx.font = `400 ${sumPx}px Outfit`;
       const lh = Math.round(sumPx * 1.38);
-      const lines = wrapWords(ctx, d.content.summary, MAXW).length;
-      parts.push({ k: "sum", px: sumPx, lh, lines, h: lines * lh });
-      h += lines * lh;
+      // each paragraph (separated by an empty line) is a part of its own, so other parts can go between them
+      sumParas.forEach((text, i) => {
+        const lines = wrapWords(ctx, text, MAXW).length;
+        const gapTop = sumParas.length > 1 && i > 0 ? Math.round(lh * 0.8) : 0;
+        parts.push({ k: "sum", id: sumParas.length > 1 ? `sum-${i}` : "summary", text, px: sumPx, lh, lines, gapTop, h: lines * lh + gapTop });
+        h += lines * lh + gapTop;
+      });
     }
     if (facts.length) {
       ctx.font = `600 ${Math.round(34 * sFacts)}px Outfit`;
@@ -658,8 +672,8 @@ function essentialPage(ctx, d, images, n, total) {
   if (fitE < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitE, fitE); ctx.translate(-PAD, -areaTop); }
   let y = areaTop + Math.max(0, (areaBottom - areaTop - lay.h) / 2); // centred block
   const PART_EL = { fig: "figure", figLabel: "figure", sum: "summary", facts: "facts", src: "source" };
-  const partId = (p) => (p.k === "blk" ? `blk-${p.b.id}` : PART_EL[p.k]);
-  const eOrder = partOrder(d, "essential", [...topBlocks.map((b) => `blk-${b.id}`), "figure", "summary", "facts", "source",
+  const partId = (p) => (p.k === "blk" ? `blk-${p.b.id}` : p.k === "sum" ? p.id : PART_EL[p.k]);
+  const eOrder = partOrder(d, "essential", [...topBlocks.map((b) => `blk-${b.id}`), "figure", ...sumIds, "facts", "source",
     ...botBlocks.map((b) => `blk-${b.id}`)]);
   const parts = lay.parts.map((p, i) => ({ p, i })).sort((a, b) =>
     eOrder.indexOf(partId(a.p)) - eOrder.indexOf(partId(b.p)) || a.i - b.i).map((x) => x.p);
@@ -683,11 +697,11 @@ function essentialPage(ctx, d, images, n, total) {
       drawParagraph(ctx, figLabel, PAD, y + 20 + 34 * sFig, MAXW, 46 * sFig, false, 3);
       y += p.h + 50;
     } else if (p.k === "sum") {
-      if (!fig) y += 0;
+      if (idx > 0) y += p.gapTop || Math.round(p.lh * 0.8) * (sumParas.length > 1 ? 1 : 0);
       ctx.fillStyle = INK;
       ctx.font = `400 ${p.px}px Outfit`;
-      drawParagraph(ctx, d.content.summary, PAD, y + p.px, MAXW, p.lh, false, p.lines);
-      y += p.h;
+      drawParagraph(ctx, p.text, PAD, y + p.px, MAXW, p.lh, false, p.lines);
+      y += p.lines * p.lh;
     } else if (p.k === "facts") {
       y += 60;
       facts.forEach((f, i) => {
