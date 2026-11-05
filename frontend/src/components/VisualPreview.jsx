@@ -580,17 +580,32 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   };
   const selSwap = selEl ? swapInfo(selEl) : null;
   const selSwapIdx = selSwap ? selSwap.list.indexOf(selSwap.id) : -1;
+  // the text fields of the clicked element, shown right in its panel
+  const selOnly = (() => {
+    if (!selEl) return null;
+    const [kind, ...rest] = String(selEl).split(":");
+    let id = rest.join(":");
+    if (id === "chartTitle") id = "chart";
+    if (id === "date" && (kind === "cover" || ["A", "B", "C"].includes(kind))) id = "coverDate";
+    return { kind, id };
+  })();
   const elPopover = selEl && selBox && (
     <div data-testid="visual-el-popover" onClick={(e) => e.stopPropagation()}
-      className="absolute z-20 w-72 rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
+      className="absolute z-20 max-h-[85%] w-80 overflow-y-auto rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
       style={{
-        left: `min(${pct(Math.max(0, selBox.x0), VW)}, calc(100% - 18.5rem))`,
+        left: `min(${pct(Math.max(0, selBox.x0), VW)}, calc(100% - 20.5rem))`,
         ...(selBox.y1 / VH > 0.62 ? { bottom: pct(VH - selBox.y0 + 16, VH) } : { top: pct(selBox.y1 + 16, VH) }),
       }}>
       <div className="mb-2 flex items-center justify-between">
         <span className="font-semibold text-forsides-ink">{elName(selEl)}</span>
         <button type="button" aria-label="Fermer" onClick={() => setSelEl(null)} className="text-slate-400 hover:text-forsides-red"><X className="h-3.5 w-3.5" /></button>
       </div>
+      {selOnly && (
+        <div className="mb-2 border-b border-slate-100 pb-2">
+          <VisualTextEditor post={localPost} title={title} version={version} updateVisual={updateVisual}
+            carKinds={carKinds} carPage={carPage} onCarPage={setCarPage} pageBoxes={elBoxes} only={selOnly} />
+        </div>
+      )}
       <label className="flex items-center gap-2 text-forsides-slate">
         <span className="w-14">Taille</span>
         <input type="range" min={0.5} max={selMaxS} step={0.05} value={Number(selCur.s) || 1} data-testid="visual-el-size"

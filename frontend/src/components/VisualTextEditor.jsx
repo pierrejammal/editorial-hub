@@ -84,7 +84,8 @@ const FORMAT_HINT = {
 // Lets the user correct every text block of the visual by hand (instead of regenerating the post).
 // Only the texts of the format being viewed are shown; in the carousel, one tab per page.
 // Edits are stored in post.visual (custom summary/points, figures, chart) and drawn immediately.
-export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds = [], carPage = 0, onCarPage, pageBoxes = [], onSelectEl }) => {
+// only = { kind, id }: shows just the fields of that element (used in the panel opened by a click on the preview)
+export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds = [], carPage = 0, onCarPage, pageBoxes = [], onSelectEl, only }) => {
   const [open, setOpen] = useState(false);
   const v = post.visual || {};
   const chart = v.chart;
@@ -954,6 +955,11 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       </Section>
     ),
   };
+
+  if (only) {
+    const body = sectionBody(only.kind, only.id);
+    return body ? <div data-testid="visual-el-text">{body}</div> : null;
+  }
 
   return (
     <div className="rounded-lg border border-slate-200">
