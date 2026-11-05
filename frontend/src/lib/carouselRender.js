@@ -168,6 +168,13 @@ function drawDividers(ctx, d, kind) {
   }
 }
 
+// order of the parts of a page chosen by the user ("Monter / Descendre" swaps two parts)
+function partOrder(d, kind, def) {
+  const o = (d.v.part_order || {})[kind];
+  if (!Array.isArray(o)) return def;
+  return [...o.filter((x) => def.includes(x)), ...def.filter((x) => !o.includes(x))];
+}
+
 // elements removed by the user on a page ("Ce qui s'affiche sur cette page"): visual.hidden["data.chart"] = true…
 function isHidden(d, key) { return Boolean((d.v.hidden || {})[key]); }
 // page title, unless removed (then the content moves up)
@@ -645,7 +652,11 @@ function essentialPage(ctx, d, images, n, total) {
   if (fitE < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitE, fitE); ctx.translate(-PAD, -areaTop); }
   let y = areaTop + Math.max(0, (areaBottom - areaTop - lay.h) / 2); // centred block
   const PART_EL = { fig: "figure", figLabel: "figure", sum: "summary", facts: "facts", src: "source" };
-  lay.parts.forEach((p) => withEl(ctx, d, PART_EL[p.k], () => {
+  const eOrder = partOrder(d, "essential", ["figure", "summary", "facts", "source"]);
+  const parts = lay.parts.map((p, i) => ({ p, i })).sort((a, b) =>
+    eOrder.indexOf(PART_EL[a.p.k]) - eOrder.indexOf(PART_EL[b.p.k]) || a.i - b.i).map((x) => x.p);
+  parts.forEach((p, idx) => withEl(ctx, d, PART_EL[p.k], () => {
+    if (p.k === "fig" && idx > 0) y += 40; // the key figure moved below another part: a little room above it
     if (p.k === "fig") {
       ctx.fillStyle = BRICK;
       ctx.font = `${p.px}px Anton`;
@@ -742,6 +753,8 @@ function dataPage(ctx, d, images, n, total) {
     ctx.save();
     if (fitF < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitF, fitF); ctx.translate(-PAD, -areaTop); }
     let y = areaTop;
+    const segChart = (first) => {
+    if (!first) y += gapExtra + 40;
     if (m.tl) {
       withEl(ctx, d, "chartTitle", () => {
         ctx.fillStyle = "#8a6a62";
@@ -759,8 +772,10 @@ function dataPage(ctx, d, images, n, total) {
       else drawBarChart(ctx, chart, PAD, y, MAXW, chartH, { rowMax: Math.round(rowMax * sChart) });
     });
     y += chartH;
+    };
+    const segNote = (first) => {
     if (m.nl) {
-      y += gapExtra;
+      if (!first) y += gapExtra;
       withEl(ctx, d, "note", () => {
         ctx.fillStyle = "#4a3a36";
         ctx.font = `italic 500 ${notePx}px Outfit`;
@@ -768,8 +783,10 @@ function dataPage(ctx, d, images, n, total) {
       });
       y += 50 + m.nl * Math.round(notePx * 1.35);
     }
+    };
+    const segFacts = (first) => {
     if (facts.length) {
-      y += 60 + gapExtra;
+      y += 60 + (first ? 0 : gapExtra);
       const fdy = elDy(d, "facts");
       y += fdy;
       const tf = startTrack(elKey("facts"));
@@ -783,6 +800,9 @@ function dataPage(ctx, d, images, n, total) {
       endTrack(tf);
       y -= fdy;
     }
+    };
+    const SEGS = { chart: segChart, note: segNote, facts: segFacts };
+    partOrder(d, "data", ["chart", "note", "facts"]).forEach((id, i) => SEGS[id](i === 0));
     ctx.restore();
   } else {
     top += heading(ctx, d, L.keyFigures, top + 90);

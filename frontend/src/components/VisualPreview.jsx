@@ -515,6 +515,62 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     toast.success(what, { action: { label: "Annuler", onClick: () => updateVisual(before) } });
   };
   deleteSelRef.current = deleteSel;
+
+  // "Monter / Descendre": the part takes the place of the one just above (or below), which takes its place
+  const SWAP_GROUPS = { essential: ["figure", "summary", "facts", "source"], data: ["chart", "note", "facts"] };
+  const swapInfo = (key) => {
+    const [kind, ...rest] = String(key || "").split(":");
+    let id = rest.join(":");
+    if (id === "chartTitle") id = "chart";
+    const idOf = (k) => { const i = k.split(":").slice(1).join(":"); return i === "chartTitle" ? "chart" : i; };
+    const onPage = (pred) => [...new Set(elBoxes.filter((b) => b.key.startsWith(`${kind}:`) && pred(idOf(b.key)))
+      .sort((a, b) => a.y0 - b.y0).map((b) => idOf(b.key)))];
+    if (SWAP_GROUPS[kind] && SWAP_GROUPS[kind].includes(id)) return { kind, id, type: "part", list: onPage((i) => SWAP_GROUPS[kind].includes(i)) };
+    if (id.startsWith("pt-")) return { kind, id, type: "point", list: onPage((i) => i.startsWith("pt-")) };
+    if (id.startsWith("blk-")) return { kind, id, type: "block", list: onPage((i) => i.startsWith("blk-")) };
+    return null;
+  };
+  const swapSel = (dir) => {
+    const info = swapInfo(selEl);
+    if (!info) return;
+    const i = info.list.indexOf(info.id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= info.list.length) return;
+    const other = info.list[j];
+    if (info.type === "part") {
+      const list = [...info.list];
+      [list[i], list[j]] = [list[j], list[i]];
+      const all = [...list, ...SWAP_GROUPS[info.kind].filter((x) => !list.includes(x))];
+      updateVisual({ part_order: { ...(v.part_order || {}), [info.kind]: all } });
+    } else if (info.type === "point") {
+      const shownPts = resolveContent(localPost, title).points;
+      const base = [...(Array.isArray(v.custom?.points) ? v.custom.points : shownPts)];
+      const find = (pid) => {
+        const t = shownPts[Number(pid.slice(3))];
+        return base.findIndex((p) => p && t && (p.label || "") === (t.label || "") && (p.text || "") === (t.text || ""));
+      };
+      const a = find(info.id);
+      const b = find(other);
+      if (a < 0 || b < 0) return;
+      [base[a], base[b]] = [base[b], base[a]];
+      updateVisual({ custom: { ...(v.custom || {}), points: base } });
+      setSelEl(`${info.kind}:${other}`); // the point moved: keep it selected at its new place
+    } else {
+      const pb = { ...(v.page_blocks || {}) };
+      const list = [...(pb[info.kind] || [])];
+      const a = list.findIndex((b) => `blk-${b.id}` === info.id);
+      const b = list.findIndex((x) => `blk-${x.id}` === other);
+      if (a < 0 || b < 0) return;
+      const posA = list[a].pos;
+      list[a] = { ...list[a], pos: list[b].pos };
+      list[b] = { ...list[b], pos: posA };
+      [list[a], list[b]] = [list[b], list[a]];
+      pb[info.kind] = list;
+      updateVisual({ page_blocks: pb });
+    }
+  };
+  const selSwap = selEl ? swapInfo(selEl) : null;
+  const selSwapIdx = selSwap ? selSwap.list.indexOf(selSwap.id) : -1;
   const elPopover = selEl && selBox && (
     <div data-testid="visual-el-popover" onClick={(e) => e.stopPropagation()}
       className="absolute z-20 w-72 rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
@@ -547,6 +603,19 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         <NumInput value={Number(selCur.y) || 0} min={-400} max={400} label="Vertical (négatif = plus haut)" testid="visual-el-y-num"
           className="w-14" onChange={(n) => setSel({ y: n })} />
       </label>
+      {selSwap && selSwap.list.length > 1 && (
+        <div className="mt-2 flex items-center gap-1.5" data-testid="visual-el-swap">
+          <span className="w-14 text-forsides-slate">Ordre</span>
+          <button type="button" data-testid="visual-el-swap-up" disabled={selSwapIdx <= 0} onClick={() => swapSel(-1)}
+            className="rounded bg-slate-100 px-2 py-0.5 font-medium hover:bg-slate-200 disabled:opacity-40" title="Prend la place de la partie au-dessus">
+            ⇡ Monter
+          </button>
+          <button type="button" data-testid="visual-el-swap-down" disabled={selSwapIdx >= selSwap.list.length - 1} onClick={() => swapSel(1)}
+            className="rounded bg-slate-100 px-2 py-0.5 font-medium hover:bg-slate-200 disabled:opacity-40" title="Prend la place de la partie en dessous">
+            ⇣ Descendre
+          </button>
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="flex gap-1">
           <button type="button" aria-label="Monter" onClick={() => setSel({ y: Math.max(-300, (Number(selCur.y) || 0) - 10) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">↑</button>
