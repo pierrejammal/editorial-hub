@@ -160,6 +160,8 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
           {box(typeof ps === "boolean" ? ps : kind === "cover" || kind === "essential",
             (on) => updateVisual({ page_source: { ...(v.page_source || {}), [kind]: on } }), "Source", `visual-show-source-${kind}`)}
           {(kind === "cover" || kind === "essential") && box(!v.hide_date, (on) => updateVisual({ hide_date: !on }), "Date", `visual-show-date-${kind}`)}
+          {box(Boolean((v.dividers || {})[kind]), (on) => updateVisual({ dividers: { ...(v.dividers || {}), [kind]: on } }),
+            "Traits entre les parties", `visual-dividers-${kind}`)}
         </div>
       </div>
     );
@@ -493,7 +495,12 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     const all = v.el || {};
     const rows = elementsOf(kind);
     const changed = rows.filter(([id]) => all[`${kind}:${id}`]).map(([id]) => id);
-    const hiddenRows = rows.filter(([id]) => (id === "source" ? (v.page_source || {})[kind] === false : hiddenMap[`${kind}.${id}`]));
+    const hiddenRows = [
+      ...rows.filter(([id]) => (id === "source" ? (v.page_source || {})[kind] === false : hiddenMap[`${kind}.${id}`])),
+      // removed separator lines ("Traits entre les parties")
+      ...Object.keys(hiddenMap).filter((k) => hiddenMap[k] && k.startsWith(`${kind}.div-`))
+        .map((k) => [k.slice(kind.length + 1), `Trait ${Number(k.split("div-")[1]) + 1}`]),
+    ];
     const show = (id) => (id === "source"
       ? updateVisual({ page_source: { ...(v.page_source || {}), [kind]: true } })
       : updateVisual({ hidden: { ...hiddenMap, [`${kind}.${id}`]: false } }));

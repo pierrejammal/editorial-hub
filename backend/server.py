@@ -1226,7 +1226,7 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
                       "labels", "carousel_labels", "source_label", "date_label",
                       "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks",
-                      "extra_sources", "page_source", "hidden", "page_order", "el"}
+                      "extra_sources", "page_source", "hidden", "page_order", "el", "dividers"}
 EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after", "col1t", "col1", "col2t", "col2", "intro", "cta"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
@@ -1394,6 +1394,7 @@ Ce que tu peux modifier:
   takeaway:quoteOpen|quoteClose|rule|signature (masquer: visual.hidden "<page>.<élément>": true)
   éléments: cover:title, cover:source, <page>:heading, essential:figure|summary|facts|source, data:chartTitle|chart|note|facts|date,
   points:pt-<n° du point>, takeaway:quote|cta, extra-<id>:body, <page>:blk-<id> (parties ajoutées). Renvoie l'objet complet.
+- traits de séparation entre les parties d'une page: visual.dividers {{"<page>": true/false}} (un trait retiré: hidden "<page>.div-<n>").
 - ordre des pages du carrousel: visual.page_order ["cover", "data", "essential", "points", "extra-<id>", "takeaway"] (null = ordre d'origine).
 - retirer/remettre un élément d'une page du carrousel: visual.hidden {{"cover.title", "<page>.heading", "essential.summary",
   "essential.figure", "essential.facts", "data.chartTitle", "data.chart", "data.note", "data.date", "data.facts",
@@ -1486,6 +1487,13 @@ Renvoie STRICTEMENT ce JSON:
             vis["el"] = {**((post.get("visual") or {}).get("el") or {}), **clean_el}
         else:
             vis.pop("el")
+    if "dividers" in vis:
+        dv = vis["dividers"]
+        if isinstance(dv, dict):
+            vis["dividers"] = {**((post.get("visual") or {}).get("dividers") or {}),
+                               **{str(k)[:40]: v for k, v in dv.items() if isinstance(v, bool)}}
+        else:
+            vis.pop("dividers")
     if "page_order" in vis:
         po = vis["page_order"]
         if isinstance(po, list):

@@ -448,6 +448,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const elName = (key) => {
     const id = String(key || "").split(":").slice(1).join(":");
     if (id.startsWith("pt-")) return `Point ${Number(id.slice(3)) + 1}`;
+    if (id.startsWith("div-")) return "Trait de séparation";
     if (id.startsWith("blk-")) return "Partie ajoutée";
     return EL_NAMES[id] || id;
   };

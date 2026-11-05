@@ -143,6 +143,31 @@ function deco(ctx, d, id, ax, ay, fn) {
   });
 }
 
+// "Traits entre les parties": a thin line in the gap between consecutive blocks of the page
+// (each line is an element of its own: it can be clicked, moved, resized or removed)
+const NOT_PARTS = new Set(["banner", "logo", "pageNum", "swipe", "signature", "quoteOpen", "quoteClose", "rule",
+  "separators", "heading", "date", "sourceLogo"]);
+function drawDividers(ctx, d, kind) {
+  if (!(d.v.dividers || {})[kind]) return;
+  const merged = {};
+  BOXES.forEach((b) => {
+    const id = b.key.split(":").slice(1).join(":");
+    if (NOT_PARTS.has(id) || id.startsWith("div-")) return;
+    const key = id === "chartTitle" ? `${kind}:chart` : b.key; // a chart and its title are one part
+    const m = merged[key];
+    merged[key] = m ? { ...m, y0: Math.min(m.y0, b.y0), y1: Math.max(m.y1, b.y1) } : { ...b };
+  });
+  const list = Object.values(merged).sort((a, b) => a.y0 - b.y0);
+  // drop blocks contained in another one (e.g. a part inside a larger part)
+  const parts = list.filter((b) => !list.some((o) => o !== b && o.y0 <= b.y0 && o.y1 >= b.y1 && (o.y1 - o.y0) > (b.y1 - b.y0)));
+  for (let i = 0; i < parts.length - 1; i++) {
+    const gap = parts[i + 1].y0 - parts[i].y1;
+    if (gap < 18) continue;
+    const y = Math.round((parts[i].y1 + parts[i + 1].y0) / 2);
+    deco(ctx, d, `div-${i}`, PAD, y, () => { ctx.fillStyle = DOT; ctx.fillRect(PAD, y - 1, MAXW, 2); });
+  }
+}
+
 // elements removed by the user on a page ("Ce qui s'affiche sur cette page"): visual.hidden["data.chart"] = true…
 function isHidden(d, key) { return Boolean((d.v.hidden || {})[key]); }
 // page title, unless removed (then the content moves up)
@@ -278,16 +303,14 @@ function drawTopBlocks(ctx, d, y0) {
   if (!blocks.length) return 0;
   let y = y0 + 34; // breathing room under the page title
   blocks.forEach((b) => { y += withEl(ctx, d, `blk-${b.id}`, () => drawBlock(ctx, b, y, k * elScale(d, `blk-${b.id}`), true)) + BLOCK_GAP; });
-  ctx.fillStyle = DOT;
-  ctx.fillRect(PAD, y - 10, MAXW, 2);
+  if (!(d.v.dividers || {})[CUR_KIND]) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y - 10, MAXW, 2); } // else drawn by the dividers
   return h + 34;
 }
 function drawPageBlocks(ctx, d, bottom) {
   const { h, k, blocks } = blocksFit(ctx, d, "bottom");
   if (!blocks.length) return;
   let y = bottom - h + 20;
-  ctx.fillStyle = DOT;
-  ctx.fillRect(PAD, y, MAXW, 2);
+  if (!(d.v.dividers || {})[CUR_KIND]) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y, MAXW, 2); } // else drawn by the dividers
   y += 30;
   blocks.forEach((b) => { y += withEl(ctx, d, `blk-${b.id}`, () => drawBlock(ctx, b, y, k * elScale(d, `blk-${b.id}`), true)) + BLOCK_GAP; });
 }
@@ -1071,6 +1094,8 @@ export function renderCarousel(post, images, makeCanvas, template) {
     TRACKERS = [];
     draw(cx, images, i + 1, plan.length);
     endShift(cx);
+    TRACKERS = [];
+    drawDividers(cx, d0, draw.kind);
     try { c.elBoxes = BOXES; } catch { /* ignore */ }
     footSource(cx, d0, draw.kind);
     try { c.pageKind = draw.kind; } catch { /* read-only canvas object */ }
