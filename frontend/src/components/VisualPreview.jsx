@@ -525,7 +525,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     const idOf = (k) => { const i = k.split(":").slice(1).join(":"); return i === "chartTitle" ? "chart" : i; };
     const onPage = (pred) => [...new Set(elBoxes.filter((b) => b.key.startsWith(`${kind}:`) && pred(idOf(b.key)))
       .sort((a, b) => a.y0 - b.y0).map((b) => idOf(b.key)))];
-    if (SWAP_GROUPS[kind] && SWAP_GROUPS[kind].includes(id)) return { kind, id, type: "part", list: onPage((i) => SWAP_GROUPS[kind].includes(i)) };
+    // L'essentiel and Les chiffres (with a chart): added sections swap with the page's own parts too
+    const flow = kind === "essential" || (kind === "data" && hasChart(localPost));
+    const inGroup = (i) => SWAP_GROUPS[kind].includes(i) || i.startsWith("blk-");
+    if (flow && inGroup(id)) return { kind, id, type: "part", list: onPage(inGroup) };
     if (id.startsWith("pt-")) return { kind, id, type: "point", list: onPage((i) => i.startsWith("pt-")) };
     if (id.startsWith("blk-")) return { kind, id, type: "block", list: onPage((i) => i.startsWith("blk-")) };
     return null;
@@ -535,6 +538,12 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     if (!info) return;
     const i = info.list.indexOf(info.id);
     const j = i + dir;
+    if (info.type === "block" && i >= 0 && (j < 0 || j >= info.list.length)) {
+      const pb = { ...(v.page_blocks || {}) };
+      pb[info.kind] = (pb[info.kind] || []).map((b) => (`blk-${b.id}` === info.id ? { ...b, pos: dir < 0 ? "top" : "bottom" } : b));
+      updateVisual({ page_blocks: pb });
+      return;
+    }
     if (i < 0 || j < 0 || j >= info.list.length) return;
     const other = info.list[j];
     if (info.type === "part") {
@@ -542,6 +551,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       [list[i], list[j]] = [list[j], list[i]];
       const all = [...list, ...SWAP_GROUPS[info.kind].filter((x) => !list.includes(x))];
       updateVisual({ part_order: { ...(v.part_order || {}), [info.kind]: all } });
+      if (info.id.startsWith("blk-")) setHoverKey(null);
     } else if (info.type === "point") {
       const shownPts = resolveContent(localPost, title).points;
       const base = [...(Array.isArray(v.custom?.points) ? v.custom.points : shownPts)];
@@ -603,14 +613,14 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         <NumInput value={Number(selCur.y) || 0} min={-400} max={400} label="Vertical (négatif = plus haut)" testid="visual-el-y-num"
           className="w-14" onChange={(n) => setSel({ y: n })} />
       </label>
-      {selSwap && selSwap.list.length > 1 && (
+      {selSwap && (selSwap.list.length > 1 || selSwap.type === "block") && (
         <div className="mt-2 flex items-center gap-1.5" data-testid="visual-el-swap">
           <span className="w-14 text-forsides-slate">Ordre</span>
-          <button type="button" data-testid="visual-el-swap-up" disabled={selSwapIdx <= 0} onClick={() => swapSel(-1)}
+          <button type="button" data-testid="visual-el-swap-up" disabled={selSwap.type !== "block" && selSwapIdx <= 0} onClick={() => swapSel(-1)}
             className="rounded bg-slate-100 px-2 py-0.5 font-medium hover:bg-slate-200 disabled:opacity-40" title="Prend la place de la partie au-dessus">
             ⇡ Monter
           </button>
-          <button type="button" data-testid="visual-el-swap-down" disabled={selSwapIdx >= selSwap.list.length - 1} onClick={() => swapSel(1)}
+          <button type="button" data-testid="visual-el-swap-down" disabled={selSwap.type !== "block" && selSwapIdx >= selSwap.list.length - 1} onClick={() => swapSel(1)}
             className="rounded bg-slate-100 px-2 py-0.5 font-medium hover:bg-slate-200 disabled:opacity-40" title="Prend la place de la partie en dessous">
             ⇣ Descendre
           </button>

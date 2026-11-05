@@ -596,9 +596,14 @@ function essentialPage(ctx, d, images, n, total) {
   let top = miniHeader(ctx, images, n, total);
   beginShift(ctx, d);
   top += heading(ctx, d, L.essential, top + 90);
-  const areaTop = top + 150 + drawTopBlocks(ctx, d, top + 130);
+  const areaTop = top + 150;
   const RB = VH - 170;
-  const areaBottom = RB - blocksReserve(ctx, d);
+  const areaBottom = RB;
+  // added sections are parts of the page like the others (so they can swap places with them)
+  const topBlocks = blocksOf(d, "top");
+  const botBlocks = blocksOf(d, "bottom");
+  const flowBlocks = [...topBlocks, ...botBlocks];
+  const blkK = (b) => k * elScale(d, `blk-${b.id}`);
   const fig = isHidden(d, "essential.figure") ? "" : clean(d.v.key_figure_value);
   const figLabel = isHidden(d, "essential.figure") ? "" : clean(d.v.key_figure_label);
   // short facts not already shown on the "chiffres" page
@@ -641,6 +646,7 @@ function essentialPage(ctx, d, images, n, total) {
       h += 60 + fh;
     }
     if (src) { const sh = 70 + sourceBlock(ctx, d, PAD, 0, MAXW, Math.round(24 * sSrc), false); parts.push({ k: "src", h: sh }); h += sh; }
+    flowBlocks.forEach((b) => { const bh = 70 + drawBlock(ctx, b, 0, blkK(b), false); parts.push({ k: "blk", b, h: bh }); h += bh; });
     return { h, parts };
   };
   let sumPx = Math.round(64 * k * sSum);
@@ -652,10 +658,19 @@ function essentialPage(ctx, d, images, n, total) {
   if (fitE < 1) { ctx.translate(PAD, areaTop); ctx.scale(fitE, fitE); ctx.translate(-PAD, -areaTop); }
   let y = areaTop + Math.max(0, (areaBottom - areaTop - lay.h) / 2); // centred block
   const PART_EL = { fig: "figure", figLabel: "figure", sum: "summary", facts: "facts", src: "source" };
-  const eOrder = partOrder(d, "essential", ["figure", "summary", "facts", "source"]);
+  const partId = (p) => (p.k === "blk" ? `blk-${p.b.id}` : PART_EL[p.k]);
+  const eOrder = partOrder(d, "essential", [...topBlocks.map((b) => `blk-${b.id}`), "figure", "summary", "facts", "source",
+    ...botBlocks.map((b) => `blk-${b.id}`)]);
   const parts = lay.parts.map((p, i) => ({ p, i })).sort((a, b) =>
-    eOrder.indexOf(PART_EL[a.p.k]) - eOrder.indexOf(PART_EL[b.p.k]) || a.i - b.i).map((x) => x.p);
-  parts.forEach((p, idx) => withEl(ctx, d, PART_EL[p.k], () => {
+    eOrder.indexOf(partId(a.p)) - eOrder.indexOf(partId(b.p)) || a.i - b.i).map((x) => x.p);
+  const dv = (d.v.dividers || {})[CUR_KIND];
+  parts.forEach((p, idx) => withEl(ctx, d, partId(p), () => {
+    if (p.k === "blk") {
+      if (idx > 0 && !dv) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y + 30, MAXW, 2); }
+      drawBlock(ctx, p.b, y + (idx > 0 ? 54 : 0), blkK(p.b), true);
+      y += p.h - (idx > 0 ? 0 : 54);
+      return;
+    }
     if (p.k === "fig" && idx > 0) y += 40; // the key figure moved below another part: a little room above it
     if (p.k === "fig") {
       ctx.fillStyle = BRICK;
@@ -689,7 +704,6 @@ function essentialPage(ctx, d, images, n, total) {
     }
   }));
   ctx.restore();
-  drawPageBlocks(ctx, d, RB);
   swipeHint(ctx);
 }
 
@@ -703,8 +717,14 @@ function dataPage(ctx, d, images, n, total) {
     // chart sized to what it needs, its reading sentence in full, then the key facts;
     // the whole block is centred so the page is never half empty
     top += heading(ctx, d, L.figures, top + 90);
-    const areaTop = top + 135 + drawTopBlocks(ctx, d, top + 125);
-    const areaBottom = VH - 170 - res;
+    const areaTop = top + 135;
+    const areaBottom = VH - 170;
+    // added sections are parts of the page like the chart, its sentence and the facts
+    const topBlocks = blocksOf(d, "top");
+    const botBlocks = blocksOf(d, "bottom");
+    const blkK = (b) => k * elScale(d, `blk-${b.id}`);
+    const blkH = (b) => drawBlock(ctx, b, 0, blkK(b), false);
+    const blocksH = [...topBlocks, ...botBlocks].reduce((a, b) => a + blkH(b) + 70, 0);
     const ctitle = isHidden(d, "data.chartTitle") ? "" : clean(chart.title).toUpperCase();
     const note = isHidden(d, "data.note") ? "" : clean(chart.note);
     const facts = isHidden(d, "data.facts") ? [] : (d.v.data_points || []).map(clean).filter(Boolean).slice(0, 3);
@@ -717,7 +737,7 @@ function dataPage(ctx, d, images, n, total) {
     // few bars → taller rows so the chart fills the page instead of leaving a hole
     const rowMax = chart.items.length <= 3 ? 190 : 150;
     const natural = Math.round((!chartOn ? 0 : chart.type === "pie" || vertical ? 600 : Math.max(260, chart.items.length * rowMax)) * sChart);
-    const avail = areaBottom - areaTop;
+    const avail = areaBottom - areaTop - blocksH;
 
     const measure = (notePx, chartH, factPx) => {
       let h = 0;
@@ -802,7 +822,19 @@ function dataPage(ctx, d, images, n, total) {
     }
     };
     const SEGS = { chart: segChart, note: segNote, facts: segFacts };
-    partOrder(d, "data", ["chart", "note", "facts"]).forEach((id, i) => SEGS[id](i === 0));
+    const dv = (d.v.dividers || {})[CUR_KIND];
+    [...topBlocks, ...botBlocks].forEach((b) => {
+      SEGS[`blk-${b.id}`] = (first) => {
+        const hb = blkH(b);
+        withEl(ctx, d, `blk-${b.id}`, () => {
+          if (!first && !dv) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y + 26, MAXW, 2); }
+          drawBlock(ctx, b, y + (first ? 0 : 50), blkK(b), true);
+        });
+        y += (first ? 0 : 50) + hb + 20;
+      };
+    });
+    partOrder(d, "data", [...topBlocks.map((b) => `blk-${b.id}`), "chart", "note", "facts", ...botBlocks.map((b) => `blk-${b.id}`)])
+      .forEach((id, i) => SEGS[id] && SEGS[id](i === 0));
     ctx.restore();
   } else {
     top += heading(ctx, d, L.keyFigures, top + 90);
@@ -835,8 +867,8 @@ function dataPage(ctx, d, images, n, total) {
       y += per;
     });
     endTrack(ti);
+    drawPageBlocks(ctx, d, VH - 170);
   }
-  drawPageBlocks(ctx, d, VH - 170);
   swipeHint(ctx);
 }
 
