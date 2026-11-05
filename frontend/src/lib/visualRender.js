@@ -258,7 +258,12 @@ function fitSentences(ctx, text, maxW, maxLines) {
   return t; // even one sentence is too long: drawParagraph will shorten it with "…"
 }
 
-function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, draw = true) {
+// "Justifier tous les textes" (visual.justify): every left-aligned paragraph is justified
+let FORCE_JUSTIFY = false;
+export const setJustify = (on) => { FORCE_JUSTIFY = Boolean(on); };
+
+function drawParagraph(ctx, text, x, y, maxW, lineH, justifyArg, maxLines = 99, draw = true) {
+  const justify = justifyArg || (FORCE_JUSTIFY && (ctx.textAlign === "left" || ctx.textAlign === "start"));
   if (maxLines < 1) return y;
   const lines = wrapWords(ctx, fitSentences(ctx, text, maxW, maxLines), maxW);
   if (lines.length > maxLines) {
@@ -370,6 +375,20 @@ const firstSentences = (text, n) => {
   const parts = clean(text).replace(/\s+/g, " ").split(/(?<=[.!?])\s+/).filter(Boolean);
   return parts.slice(0, n).join(" ");
 };
+
+// Index in visual.custom.points of the n-th point shown on the visual (empty points are not shown),
+// or n itself when the points are the automatic ones.
+export function customPointIndex(post, n) {
+  const cp = post?.visual?.custom?.points;
+  if (!Array.isArray(cp)) return n;
+  let k = -1;
+  for (let i = 0; i < cp.length; i++) {
+    const p = cp[i] || {};
+    if (clean(p.text) || clean(p.value)) k += 1;
+    if (k === n) return i;
+  }
+  return -1;
+}
 
 // Resolves what the visual says: résumé + 3 analysis points + source line. Never empty.
 export function resolveContent(post, title) {
@@ -1029,6 +1048,7 @@ export function renderVisual(ctx, { post, version, images, template, hooks }) {
   setRenderLang(langOf(post));
   setRenderLabels(v.labels);
   setTextScales(v.text_scale, v.title_scale);
+  setJustify(v.justify);
   const headerBottom = drawHeader(ctx, post, images, W);
   const content = resolveContent(post, title);
   const FOOT = VH - 200;

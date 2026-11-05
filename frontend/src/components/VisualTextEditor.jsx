@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { NumInput } from "@/components/NumInput";
-import { resolveContent, hasChart } from "@/lib/visualRender";
+import { resolveContent, hasChart, customPointIndex } from "@/lib/visualRender";
 import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Columns2, Briefcase } from "lucide-react";
 
 const inputCls =
@@ -643,6 +643,24 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     updateVisual({ page_order: order });
     setPendingKind(activeKind); // keep showing the page that was moved
   };
+  // whole pages: drag a tab onto another to move it there, or swap two pages
+  const [dragKind, setDragKind] = useState(null);
+  const reorderPage = (from, to) => {
+    if (!from || from === to) return;
+    const order = tabs.filter((k) => k !== from);
+    order.splice(order.indexOf(to) + (tabs.indexOf(from) < tabs.indexOf(to) ? 1 : 0), 0, from);
+    updateVisual({ page_order: order });
+    setPendingKind(from);
+  };
+  const swapPages = (a, b) => {
+    const order = [...tabs];
+    const i = order.indexOf(a);
+    const j = order.indexOf(b);
+    if (i < 0 || j < 0) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    updateVisual({ page_order: order });
+    setPendingKind(a);
+  };
   const extraOf = (kind) => extras.find((x) => `extra-${x.id}` === kind);
   const tabLabel = (k) => {
     const x = extraOf(k);
@@ -716,10 +734,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     });
     return ids;
   };
-  const edIndexOf = (gi) => {
-    const t = shown.points[gi];
-    return points.findIndex((p) => t && (p.label || "") === (t.label || "") && (p.text || "") === (t.text || ""));
-  };
+  const edIndexOf = (gi) => customPointIndex(post, gi); // n-th point shown → its place in the edited list
   const elLabel = (kind, id) => {
     if (id.startsWith("pt-")) { const t = shown.points[Number(id.slice(3))]; return `Point « ${String(t?.label || "").slice(0, 40)} »`; }
     if (id.startsWith("blk-")) {
@@ -950,13 +965,23 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
 
       {open && (
         <div data-testid="visual-text-editor" className="space-y-3 px-3 pb-4">
+          <label className="inline-flex items-center gap-2 text-xs font-medium text-forsides-ink">
+            <input type="checkbox" data-testid="visual-justify" checked={Boolean(v.justify)} onChange={(e) => updateVisual({ justify: e.target.checked })} />
+            Justifier tous les textes (alignés à gauche et à droite)
+          </label>
           {isK ? (
             <>
               <p className="text-xs text-slate-500">Carrousel : choisissez la page à modifier, l'aperçu l'affiche. Tout ce qui est écrit sur la page se modifie ici ; un champ vide garde le texte d'origine (en grisé).</p>
               <div className="flex flex-wrap gap-1.5" data-testid="visual-edit-pages">
                 {tabs.map((k) => (
                   <button key={k} type="button" data-testid={`visual-edit-page-${k}`} onClick={() => goTab(k)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    draggable title="Glissez l'onglet pour déplacer la page"
+                    onDragStart={(e) => { setDragKind(k); e.dataTransfer.effectAllowed = "move"; }}
+                    onDragOver={(e) => { e.preventDefault(); }}
+                    onDrop={(e) => { e.preventDefault(); reorderPage(dragKind, k); setDragKind(null); }}
+                    onDragEnd={() => setDragKind(null)}
+                    className={`cursor-grab rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                      dragKind && dragKind !== k ? "ring-1 ring-dashed ring-forsides-red/50 " : ""}${
                       activeKind === k ? "bg-forsides-red text-white" : "bg-slate-100 text-forsides-slate hover:bg-slate-200"}`}>
                     {carKinds.indexOf(k) >= 0 ? `${carKinds.indexOf(k) + 1}. ` : ""}{tabLabel(k)}
                   </button>
@@ -972,12 +997,23 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                   className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-forsides-slate hover:bg-slate-200 disabled:opacity-40">
                   Après <ChevronRight className="h-3.5 w-3.5" />
                 </button>
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="text-forsides-slate">Échanger avec :</span>
+                  <select data-testid="visual-page-swap" value="" onChange={(e) => e.target.value && swapPages(activeKind, e.target.value)}
+                    className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-forsides-red">
+                    <option value="">choisir une page…</option>
+                    {tabs.filter((k) => k !== activeKind).map((k) => (
+                      <option key={k} value={k}>{`${tabs.indexOf(k) + 1}. ${tabLabel(k)}`}</option>
+                    ))}
+                  </select>
+                </label>
                 {Array.isArray(v.page_order) && (
                   <button type="button" onClick={() => updateVisual({ page_order: null })} className="text-forsides-slate hover:text-forsides-red">
                     Ordre d'origine
                   </button>
                 )}
               </div>
+              <p className="text-[11px] text-slate-400">Astuce : glissez un onglet de page sur un autre pour réorganiser le carrousel.</p>
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
               {posBar(`k:${activeKind}`)}
               {elPanel(activeKind)}

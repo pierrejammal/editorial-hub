@@ -3,7 +3,7 @@ import {
   VW, VH, drawHeader, drawSignature, resolveContent, hasChart,
   drawParagraph, drawLabel, drawRule, drawBarChart, drawPieChart, wrapWords, fitSentences, fitFontSize,
   clean, PAD, BLUSH, BRICK, BORDEAUX, CORAL, INK, DOT, langOf, setRenderLang, renderVisual,
-  applyTemplate, currentTemplate, tplScale, setRenderLabels, ellipsize, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet, roundRect,
+  applyTemplate, currentTemplate, tplScale, setRenderLabels, setJustify, ellipsize, resolveTemplate, carouselScopes, drawBanner, titleFontFamily, drawBullet, roundRect,
 } from "@/lib/visualRender";
 
 const CL = {
@@ -1191,6 +1191,7 @@ export function renderCarousel(post, images, makeCanvas, template) {
     Object.entries(ovr).forEach(([k, val]) => { if (k in L && typeof val === "string" && val.trim()) L[k] = val.trim(); });
   }
   setRenderLabels(post.visual?.labels);
+  setJustify(post.visual?.justify);
   setRenderLang(lang);
   const plan = planCarousel(post);
   const d0 = plan.data;

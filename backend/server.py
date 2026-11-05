@@ -1226,7 +1226,7 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
                       "labels", "carousel_labels", "source_label", "date_label",
                       "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks",
-                      "extra_sources", "page_source", "hidden", "page_order", "el", "dividers", "part_order", "lines_after"}
+                      "extra_sources", "page_source", "hidden", "page_order", "el", "dividers", "part_order", "lines_after", "justify"}
 EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after", "col1t", "col1", "col2t", "col2", "intro", "cta"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
@@ -1402,6 +1402,7 @@ Ce que tu peux modifier:
   = un trait sous le graphique); liste complète.
 - ordre des parties dans une page (échange de place): visual.part_order {{"essential": ["figure","summary","facts","source"] dans l'ordre voulu,
   "data": ["chart","note","facts"]}}; ordre des points = ordre de visual.custom.points.
+- justifier tous les textes (alignés à gauche et à droite): visual.justify true/false.
 - ordre des pages du carrousel: visual.page_order ["cover", "data", "essential", "points", "extra-<id>", "takeaway"] (null = ordre d'origine).
 - retirer/remettre un élément d'une page du carrousel: visual.hidden {{"cover.title", "<page>.heading", "essential.summary",
   "essential.figure", "essential.facts", "data.chartTitle", "data.chart", "data.note", "data.date", "data.facts",
@@ -1451,6 +1452,8 @@ Renvoie STRICTEMENT ce JSON:
                             **{k: str(val)[:400] for k, val in vis[key].items() if k in allowed and isinstance(val, str)}}
             else:
                 vis.pop(key)
+    if "justify" in vis and not isinstance(vis["justify"], bool):
+        vis.pop("justify")
     for key in ("text_scale", "title_scale"):
         if key in vis:
             try:

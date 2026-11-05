@@ -11,7 +11,7 @@ import { jpegsToPdf } from "@/lib/pdf";
 import { prepareLogo } from "@/lib/logoImage";
 import { resolveSourceLogo } from "@/lib/sourceLogo";
 import {
-  renderVisual, loadImage, hasChart, VW, VH, FONT_SET, resolveContent,
+  renderVisual, loadImage, hasChart, VW, VH, FONT_SET, resolveContent, customPointIndex,
 } from "@/lib/visualRender";
 
 // "K" = carousel: the preview shows its pages one by one, download gives the PDF
@@ -495,9 +495,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       what = "Partie supprimée";
     } else if (id.startsWith("pt-")) {
       const shownPts = resolveContent(localPost, title).points;
-      const target = shownPts[Number(id.slice(3))];
       const base = Array.isArray(v.custom?.points) ? v.custom.points : shownPts;
-      const idx = base.findIndex((p) => p && target && (p.label || "") === (target.label || "") && (p.text || "") === (target.text || ""));
+      const idx = customPointIndex(localPost, Number(id.slice(3)));
       if (idx < 0) return;
       updateVisual({ custom: { ...(v.custom || {}), points: base.filter((_, i) => i !== idx) } });
       what = "Point supprimé";
@@ -557,10 +556,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     } else if (info.type === "point") {
       const shownPts = resolveContent(localPost, title).points;
       const base = [...(Array.isArray(v.custom?.points) ? v.custom.points : shownPts)];
-      const find = (pid) => {
-        const t = shownPts[Number(pid.slice(3))];
-        return base.findIndex((p) => p && t && (p.label || "") === (t.label || "") && (p.text || "") === (t.text || ""));
-      };
+      const find = (pid) => customPointIndex(localPost, Number(pid.slice(3)));
       const a = find(info.id);
       const b = find(other);
       if (a < 0 || b < 0) return;
