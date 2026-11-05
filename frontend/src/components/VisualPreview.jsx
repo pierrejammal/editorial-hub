@@ -433,7 +433,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   } : {};
   const EL_NAMES = { heading: "Titre de la page", title: "Titre", source: "Source", figure: "Chiffre clé", summary: "Résumé",
     facts: "Faits", chartTitle: "Titre du graphique", chart: "Graphique", note: "Phrase sous le graphique", date: "Échéance",
-    quote: "Message", cta: "Question et appel de fin", body: "Contenu de la page" };
+    quote: "Message", cta: "Question et appel de fin", body: "Contenu de la page",
+    banner: "Bandeau NEWS", logo: "Logo FORSIDES", sourceLogo: "Logo de la source", pageNum: "Numéro de page",
+    swipe: "« Faites défiler »", separators: "Séparateur", quoteOpen: "Guillemet ouvrant", quoteClose: "Guillemet fermant",
+    rule: "Filet", signature: "Signature" };
   const elName = (key) => {
     const id = String(key || "").split(":").slice(1).join(":");
     if (id.startsWith("pt-")) return `Point ${Number(id.slice(3)) + 1}`;
@@ -454,6 +457,15 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const selCur = selEl ? elAll[selEl] || {} : {};
   const setSel = (patch) => updateVisual({ el: { ...elAll, [selEl]: { ...selCur, ...patch } } });
   const selBox = selEl ? boxOf(selEl) : null;
+  // "Masquer": the source is switched off with the page's source setting, the rest with visual.hidden
+  const hideSel = () => {
+    const [kind, ...rest] = String(selEl).split(":");
+    const id = rest.join(":");
+    if (id === "source") updateVisual({ page_source: { ...(v.page_source || {}), [kind]: false } });
+    else updateVisual({ hidden: { ...(v.hidden || {}), [`${kind}.${id}`]: true } });
+    setSelEl(null);
+    toast.message("Élément masqué", { description: "Pour le remettre : « Modifier le texte du visuel » → Taille et position de chaque élément." });
+  };
   const elPopover = selEl && selBox && (
     <div data-testid="visual-el-popover" onClick={(e) => e.stopPropagation()}
       className="absolute z-20 w-64 rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
@@ -472,7 +484,13 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         <span className="w-9 text-right font-mono">{Math.round((Number(selCur.s) || 1) * 100)}%</span>
       </label>
       <label className="mt-1.5 flex items-center gap-2 text-forsides-slate">
-        <span className="w-14">Position</span>
+        <span className="w-14">Horizontal</span>
+        <input type="range" min={-400} max={400} step={5} value={Number(selCur.x) || 0} data-testid="visual-el-x"
+          onChange={(e) => setSel({ x: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
+        <span className="w-9 text-right font-mono">{(Number(selCur.x) || 0) > 0 ? `→${selCur.x}` : (Number(selCur.x) || 0) < 0 ? `←${-selCur.x}` : "0"}</span>
+      </label>
+      <label className="mt-1.5 flex items-center gap-2 text-forsides-slate">
+        <span className="w-14">Vertical</span>
         <input type="range" min={-300} max={300} step={5} value={Number(selCur.y) || 0} data-testid="visual-el-pos"
           onChange={(e) => setSel({ y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
         <span className="w-9 text-right font-mono">{(Number(selCur.y) || 0) > 0 ? `↓${selCur.y}` : (Number(selCur.y) || 0) < 0 ? `↑${-selCur.y}` : "0"}</span>
@@ -484,7 +502,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
           <button type="button" aria-label="Plus petit" onClick={() => setSel({ s: Math.max(0.5, Math.round(((Number(selCur.s) || 1) - 0.05) * 100) / 100) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">A−</button>
           <button type="button" aria-label="Plus grand" onClick={() => setSel({ s: Math.min(1.6, Math.round(((Number(selCur.s) || 1) + 0.05) * 100) / 100) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">A+</button>
         </span>
-        {(selCur.s || selCur.y) ? (
+        <button type="button" data-testid="visual-el-hide" onClick={hideSel} className="text-slate-500 hover:text-forsides-red">Masquer</button>
+        {(selCur.s || selCur.y || selCur.x) ? (
           <button type="button" onClick={() => { const next = { ...elAll }; delete next[selEl]; updateVisual({ el: next }); }}
             className="text-slate-400 hover:text-forsides-red">Rétablir</button>
         ) : null}

@@ -51,6 +51,10 @@ function elScale(d, id) {
   const n = Number(((d.v.el || {})[elKey(id)] || {}).s);
   return Number.isFinite(n) && n > 0 ? Math.max(0.5, Math.min(1.6, n)) : 1;
 }
+function elDx(d, id) {
+  const n = Number(((d.v.el || {})[elKey(id)] || {}).x);
+  return Number.isFinite(n) ? Math.max(-500, Math.min(500, n)) : 0;
+}
 function elDy(d, id) {
   const n = Number(((d.v.el || {})[elKey(id)] || {}).y);
   return Number.isFinite(n) ? Math.max(-400, Math.min(400, n)) : 0;
@@ -96,25 +100,51 @@ function instrument(ctx) {
   };
   ctx.fillRect = (x, y, w, h) => { noteBox(ctx, x, y, x + w, y + h); return fr(x, y, w, h); };
   ctx.arc = (x, y, r, ...rest) => { noteBox(ctx, x - r, y - r, x + r, y + r); return ar(x, y, r, ...rest); };
+  const di = ctx.drawImage.bind(ctx);
+  ctx.drawImage = (img, ...a) => {
+    if (a.length === 4) noteBox(ctx, a[0], a[1], a[0] + a[2], a[1] + a[3]);
+    else if (a.length === 8) noteBox(ctx, a[4], a[5], a[4] + a[6], a[5] + a[7]);
+    return di(img, ...a);
+  };
 }
 function track(ctx, key, fn) {
   const t = startTrack(key);
   try { return fn(); } finally { endTrack(t); }
 }
 
-// draws one element moved by its own offset (and records where it is)
+// draws one text element moved by its own offsets (and records where it is); its size is applied by the caller
 function withEl(ctx, d, id, fn) {
+  if ((id.startsWith("pt-") || id.startsWith("blk-")) && isHidden(d, `${CUR_KIND}.${id}`)) return 0;
+  const dx = elDx(d, id);
   const dy = elDy(d, id);
   return track(ctx, elKey(id), () => {
-    if (!dy) return fn();
+    if (!dy && !dx) return fn();
     ctx.save();
-    ctx.translate(0, dy);
+    ctx.translate(dx, dy);
+    try { return fn(); } finally { ctx.restore(); }
+  });
+}
+// decorations (banner, logos, page number, quote marks, lines, signature…): moved, resized around
+// their anchor point, or hidden — each one on its own
+let CUR_D = null;
+function deco(ctx, d, id, ax, ay, fn) {
+  if (!d) return fn();
+  if (isHidden(d, `${CUR_KIND}.${id}`)) return undefined;
+  const s = elScale(d, id);
+  const dx = elDx(d, id);
+  const dy = elDy(d, id);
+  return track(ctx, elKey(id), () => {
+    if (s === 1 && !dx && !dy) return fn();
+    ctx.save();
+    ctx.translate(ax + dx, ay + dy);
+    ctx.scale(s, s);
+    ctx.translate(-ax, -ay);
     try { return fn(); } finally { ctx.restore(); }
   });
 }
 
 // elements removed by the user on a page ("Ce qui s'affiche sur cette page"): visual.hidden["data.chart"] = true…
-const isHidden = (d, key) => Boolean((d.v.hidden || {})[key]);
+function isHidden(d, key) { return Boolean((d.v.hidden || {})[key]); }
 // page title, unless removed (then the content moves up)
 function heading(ctx, d, text, y) {
   if (isHidden(d, `${CUR_KIND}.heading`) || !String(text || "").trim()) return -70;
@@ -286,14 +316,14 @@ function miniHeader(ctx, images, n, total) {
   const label = String(currentTemplate().bannerText || "").trim().slice(0, 24);
   const bs = tplScale("bannerScale");
   const bh = Math.round(70 * bs);
-  drawBanner(ctx, label, PAD, 60, bh, Math.round(56 * bs)); // same shape as the template's banner
+  deco(ctx, CUR_D, "banner", PAD, 60, () => drawBanner(ctx, label, PAD, 60, bh, Math.round(56 * bs))); // template's banner shape
   const logo = images?.logoImg;
   let lh = 0;
   if (logo) {
     lh = 60 * tplScale("logoScale");
     let lw = (logo.width / logo.height) * lh;
     if (lw > 520) { lw = 520; lh = lw * (logo.height / logo.width); }
-    ctx.drawImage(logo, VW - PAD - lw, 64, lw, lh);
+    deco(ctx, CUR_D, "logo", VW - PAD, 64, () => ctx.drawImage(logo, VW - PAD - lw, 64, lw, lh));
   }
   pageCounter(ctx, n, total);
   // the page content starts under whichever is taller
@@ -305,7 +335,7 @@ function pageCounter(ctx, n, total) {
   ctx.textAlign = "right";
   ctx.fillStyle = "#8a6a62";
   ctx.font = "600 26px Outfit";
-  ctx.fillText(`${n} / ${total}`, VW - PAD, VH - 70);
+  deco(ctx, CUR_D, "pageNum", VW - PAD, VH - 70, () => ctx.fillText(`${n} / ${total}`, VW - PAD, VH - 70));
   ctx.textAlign = "left";
 }
 
@@ -314,7 +344,7 @@ function swipeHint(ctx, label = L.swipe) {
   ctx.fillStyle = BRICK;
   ctx.font = "700 30px Outfit";
   ctx.textAlign = "left";
-  ctx.fillText(ellipsize(ctx, `${label}  →`, MAXW - 160), PAD, VH - 70);
+  deco(ctx, CUR_D, "swipe", PAD, VH - 70, () => ctx.fillText(ellipsize(ctx, `${label}  →`, MAXW - 160), PAD, VH - 70));
 }
 
 // Page title: wraps (and honours typed line breaks) and shrinks so it never leaves the page.
@@ -336,7 +366,7 @@ function bigLabel(ctx, text, y, s = 1) {
 
 // ---------- pages ----------
 function coverPage(ctx, d, images, n, total) {
-  const top = drawHeader(ctx, d.post, images);
+  const top = drawHeader(ctx, d.post, images, (id, ax, ay, fn) => deco(ctx, d, id, ax, ay, fn));
   beginShift(ctx, d);
   const withSrc = d.content.source && showSource(d, "cover");
   let srcPx = Math.round(30 * elScale(d, "source"));
@@ -641,8 +671,8 @@ function pointsPage(ctx, d, images, n, total, points, pageTitle) {
       if (p.text) drawParagraph(ctx, b.text, PAD, y + 30 + fy + b.px, MAXW, b.lh, false, b.maxLines);
     });
     if (i < points.length - 1) {
-      ctx.fillStyle = DOT;
-      ctx.fillRect(PAD, y + per - 40, MAXW, 2);
+      const sy = y + per - 40;
+      deco(ctx, d, "separators", PAD, sy, () => { ctx.fillStyle = DOT; ctx.fillRect(PAD, sy, MAXW, 2); });
     }
     y += per;
   });
@@ -662,29 +692,32 @@ function takeawayPage(ctx, d, images, n, total) {
   const QH = 120; // room taken by each quote mark
   const b = fitBlock(ctx, text, 700, Math.round(64 * pageScale(d, "takeaway") * elScale(d, "quote")), 24, area.bottom - area.top - QH * 2, 1.25);
   const lines = Math.min(b.maxLines, wrapWords(ctx, b.text, MAXW).length);
-  const blockH = QH + lines * b.lh + QH;
+  // when the last line reaches the right edge, the closing quote goes a little lower so it never covers the text
+  ctx.font = `700 ${b.px}px Outfit`;
+  const lastLn = (wrapWords(ctx, b.text, MAXW)[lines - 1] || []).join(" ");
+  const qDrop = PAD + ctx.measureText(lastLn).width > VW - PAD - 150 ? 80 : 0;
+  const blockH = QH + lines * b.lh + QH + qDrop;
   // the quote + text block is centred in the free space, so there is no hole under the opening quote
   const y0 = area.top + Math.max(0, (area.bottom - area.top - blockH) / 2);
   if (text) withEl(ctx, d, "quote", () => {
-  ctx.fillStyle = BRICK;
-  ctx.font = "220px Anton";
-  ctx.fillText("“", PAD - 10, y0 + 175);
+  deco(ctx, d, "quoteOpen", PAD, y0 + 60, () => { ctx.fillStyle = BRICK; ctx.font = "220px Anton"; ctx.fillText("“", PAD - 10, y0 + 175); });
   ctx.fillStyle = BORDEAUX;
   ctx.font = `700 ${b.px}px Outfit`;
   drawParagraph(ctx, b.text, PAD, y0 + QH + b.px, MAXW, b.lh, false, b.maxLines);
-  ctx.fillStyle = BRICK;
-  ctx.font = "220px Anton";
-  ctx.textAlign = "right";
-  ctx.fillText("”", VW - PAD + 10, y0 + QH + lines * b.lh + 175);
-  ctx.textAlign = "left";
+  const cqY = y0 + QH + lines * b.lh + 175 + qDrop;
+  deco(ctx, d, "quoteClose", VW - PAD, cqY - 110, () => {
+    ctx.fillStyle = BRICK; ctx.font = "220px Anton"; ctx.textAlign = "right";
+    ctx.fillText("”", VW - PAD + 10, cqY);
+    ctx.textAlign = "left";
+  });
   });
   drawPageBlocks(ctx, d, ctaOn ? VH - 420 : VH - 180);
   endShift(ctx); // the closing question stays in place
   if (!ctaOn) {
-    if (!isHidden(d, "takeaway.signature")) drawSignature(ctx);
+    if (!isHidden(d, "takeaway.signature")) deco(ctx, d, "signature", VW / 2, VH - 78, () => drawSignature(ctx));
     return;
   }
-  drawRule(ctx, VH - 400);
+  deco(ctx, d, "rule", PAD, VH - 400, () => drawRule(ctx, VH - 400));
   // closing texts wrap (2 lines max each) instead of running off the page
   const sC = elScale(d, "cta");
   withEl(ctx, d, "cta", () => {
@@ -695,7 +728,7 @@ function takeawayPage(ctx, d, images, n, total) {
     ctx.font = `400 ${Math.round(30 * sC)}px Outfit`;
     drawParagraph(ctx, clean(d.v.cta_text) || L.cta, PAD, Math.max(VH - 270, qEnd + 8), MAXW, Math.round(38 * sC), false, 2);
   });
-  if (!isHidden(d, "takeaway.signature")) drawSignature(ctx);
+  if (!isHidden(d, "takeaway.signature")) deco(ctx, d, "signature", VW / 2, VH - 78, () => drawSignature(ctx));
 }
 
 // Page added by the user ("Ajouter une page"): texte, chiffre clé, citation or liste
@@ -860,6 +893,7 @@ export function renderCarousel(post, images, makeCanvas, template) {
     const c = makeCanvas(VW, VH);
     applyTemplate(resolveTemplate(full, carouselScopes(i)));
     CUR_KIND = draw.kind;
+    CUR_D = d0;
     SHIFTED = false;
     const cx = c.getContext("2d");
     try { instrument(cx); } catch { /* read-only context: no click selection */ }

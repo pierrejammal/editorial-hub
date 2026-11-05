@@ -425,6 +425,13 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       .map(([p, gi]) => [`pt-${gi}`, `Point « ${String(p.label || "").slice(0, 30)} »`])];
     else if (kind === "takeaway") rows = [H, ["quote", "Message"], ["cta", "Question et appel de fin"]];
     else if (String(kind).startsWith("extra-")) rows = [H, ["body", "Contenu de la page"]];
+    // decorations of the page
+    const deco = kind === "cover"
+      ? [["banner", "Bandeau NEWS"], ["date", "Date"], ["logo", "Logo FORSIDES"], ["sourceLogo", "Logo de la source"], ["swipe", "« Faites défiler »"], ["pageNum", "Numéro de page"]]
+      : [["banner", "Bandeau NEWS"], ["logo", "Logo FORSIDES"], ...(kind === "points" ? [["separators", "Séparateurs"]] : []),
+        ...(kind === "takeaway" ? [["quoteOpen", "Guillemet ouvrant"], ["quoteClose", "Guillemet fermant"], ["rule", "Filet"], ["signature", "Signature"]] : [["swipe", "« Faites défiler »"]]),
+        ["pageNum", "Numéro de page"]];
+    rows.push(...deco);
     const blocks = Array.isArray((v.page_blocks || {})[kind]) ? v.page_blocks[kind] : [];
     blocks.forEach((b) => rows.push([`blk-${b.id}`, `Partie « ${String(b.title || EXTRA_TYPES.find((t) => t.type === b.type)?.label || "").slice(0, 30)} »`]));
     return rows;
@@ -437,18 +444,29 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     return (
       <details className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2" data-testid="visual-el-panel">
         <summary className="cursor-pointer select-none text-xs font-semibold text-forsides-ink">
-          Taille et position de chaque élément {changed > 0 && <span className="font-normal text-forsides-red">({changed} modifié{changed > 1 ? "s" : ""})</span>}
+          Taille, position et affichage de chaque élément {changed > 0 && <span className="font-normal text-forsides-red">({changed} modifié{changed > 1 ? "s" : ""})</span>}
         </summary>
         <div className="mt-2 space-y-3">
           {rows.map(([id, label]) => {
             const cur = all[`${kind}:${id}`] || {};
             const sz = Number(cur.s) || 1;
             const y = Number(cur.y) || 0;
+            const x = Number(cur.x) || 0;
+            const hKey = `${kind}.${id}`;
+            const isOff = id === "source" ? (v.page_source || {})[kind] === false : Boolean(hiddenMap[hKey]);
+            const toggleOff = (off) => (id === "source"
+              ? updateVisual({ page_source: { ...(v.page_source || {}), [kind]: !off } })
+              : updateVisual({ hidden: { ...hiddenMap, [hKey]: off } }));
             return (
               <div key={id} className="space-y-1" data-testid={`visual-el-${id}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-forsides-ink">{label}</span>
-                  {(sz !== 1 || y !== 0) && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-xs font-medium ${isOff ? "text-slate-400 line-through" : "text-forsides-ink"}`}>{label}</span>
+                  {id !== "body" && (
+                    <label className="ml-auto inline-flex items-center gap-1 text-[11px] text-forsides-slate">
+                      <input type="checkbox" checked={isOff} onChange={(e) => toggleOff(e.target.checked)} /> Masquer
+                    </label>
+                  )}
+                  {(sz !== 1 || y !== 0 || x !== 0) && (
                     <button type="button" onClick={() => {
                       const next = { ...all }; delete next[`${kind}:${id}`]; updateVisual({ el: next });
                     }} className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-forsides-red">
@@ -464,7 +482,13 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                     <span className="w-10 text-right font-mono">{Math.round(sz * 100)}%</span>
                   </label>
                   <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
-                    <span className="w-14 shrink-0">Position</span>
+                    <span className="w-14 shrink-0">Horizontal</span>
+                    <input type="range" min={-400} max={400} step={5} value={x} aria-label={`Position horizontale : ${label}`}
+                      onChange={(e) => set(id, { x: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
+                    <span className="w-10 text-right font-mono">{x > 0 ? `→${x}` : x < 0 ? `←${-x}` : "0"}</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
+                    <span className="w-14 shrink-0">Vertical</span>
                     <input type="range" min={-300} max={300} step={5} value={y} aria-label={`Position : ${label}`}
                       onChange={(e) => set(id, { y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
                     <span className="w-10 text-right font-mono">{y > 0 ? `↓${y}` : y < 0 ? `↑${-y}` : "0"}</span>

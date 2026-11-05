@@ -1389,7 +1389,9 @@ Ce que tu peux modifier:
   "k:extra-<id>"). Renvoie l'objet complet.
 - parties ajoutées DANS une page du carrousel (sous son contenu): visual.page_blocks {{"<page>": [{{"id", "type":
   "text"|"figure"|"quote"|"list", "title": "sous-titre", "text", "value", "label"}}]}} (max 4 par page, couverture comprise); "pos": "top" (en haut de la page) ou "bottom" (en bas, défaut).
-- taille et position de CHAQUE élément d'une page du carrousel: visual.el {{"<page>:<élément>": {{"s": 0.5 à 1.6, "y": -300 à 300}}}}
+- taille et position de CHAQUE élément d'une page du carrousel: visual.el {{"<page>:<élément>": {{"s": 0.5 à 1.6, "y": -300 à 300 (vertical), "x": -400 à 400 (horizontal)}}}}
+  décorations aussi: <page>:banner, <page>:logo, cover:date, cover:sourceLogo, <page>:pageNum, <page>:swipe, points:separators,
+  takeaway:quoteOpen|quoteClose|rule|signature (masquer: visual.hidden "<page>.<élément>": true)
   éléments: cover:title, cover:source, <page>:heading, essential:figure|summary|facts|source, data:chartTitle|chart|note|facts|date,
   points:pt-<n° du point>, takeaway:quote|cta, extra-<id>:body, <page>:blk-<id> (parties ajoutées). Renvoie l'objet complet.
 - ordre des pages du carrousel: visual.page_order ["cover", "data", "essential", "points", "extra-<id>", "takeaway"] (null = ordre d'origine).
@@ -1476,6 +1478,8 @@ Renvoie STRICTEMENT ce JSON:
                             e["s"] = max(0.5, min(1.6, float(val["s"])))
                         if "y" in val:
                             e["y"] = max(-400, min(400, int(float(val["y"]))))
+                        if "x" in val:
+                            e["x"] = max(-500, min(500, int(float(val["x"]))))
                     except (TypeError, ValueError):
                         continue
                     clean_el[str(k)[:60]] = e

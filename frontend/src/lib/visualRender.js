@@ -874,7 +874,8 @@ function drawSourceFooter(ctx, content, top) {
 }
 
 // Blush background, NEWS slab, date, FORSIDES logo and source logo. Returns the header's bottom y.
-export function drawHeader(ctx, post, images) {
+// wrap(id, anchorX, anchorY, draw): lets the carousel move / resize / hide each piece of the header
+export function drawHeader(ctx, post, images, wrap = (id, ax, ay, fn) => fn()) {
   const { logoImg, sourceLogoImg } = images || {};
   ctx.fillStyle = BLUSH;
   ctx.fillRect(0, 0, VW, VH);
@@ -888,7 +889,7 @@ export function drawHeader(ctx, post, images) {
   const rectY = 52;
   const rectH = Math.round(128 * bs);
   let bannerRight = PAD;
-  if (label) {
+  if (label) wrap("banner", PAD, rectY, () => {
     // long words get a smaller font so the banner never runs into the logos
     const px = fitFontSize(ctx, label, "Anton", Math.round(118 * bs), Math.min(640, 560 * bs), 60);
     const tw = ctx.measureText(label).width;
@@ -915,17 +916,17 @@ export function drawHeader(ctx, post, images) {
       ctx.restore();
       bannerRight = PAD + w + (shape === "pill" ? 20 : 0);
     }
-  }
+  });
   const bannerBottom = rectY + rectH;
 
   // date
-  if (TPL.showDate && !post.visual?.hide_date) {
+  if (TPL.showDate && !post.visual?.hide_date) wrap("date", PAD, bannerBottom + 40, () => {
     ctx.fillStyle = INK;
     ctx.font = "500 32px Outfit";
     ctx.textAlign = label ? "right" : "left";
     ctx.fillText((post.visual?.date_label || post.meta?.date_label || "").toUpperCase(), label ? Math.max(bannerRight, PAD + 260) : PAD, bannerBottom + 40);
     ctx.textAlign = "left";
-  }
+  });
 
   // FORSIDES logo
   let logoBottom = 60;
@@ -933,7 +934,7 @@ export function drawHeader(ctx, post, images) {
     let lh = 84 * tplScale("logoScale");
     let lw = (logoImg.width / logoImg.height) * lh;
     if (lw > 560) { lw = 560; lh = lw * (logoImg.height / logoImg.width); } // never runs into the banner
-    ctx.drawImage(logoImg, VW - PAD - lw, 50, lw, lh);
+    wrap("logo", VW - PAD, 50, () => ctx.drawImage(logoImg, VW - PAD - lw, 50, lw, lh));
     logoBottom = 50 + lh;
   }
 
@@ -949,10 +950,10 @@ export function drawHeader(ctx, post, images) {
       sw = maxW;
       sh = sw / ar;
     }
-    ctx.drawImage(sourceLogoImg, VW - PAD - sw, logoBottom + 22, sw, sh);
+    wrap("sourceLogo", VW - PAD, logoBottom + 22, () => ctx.drawImage(sourceLogoImg, VW - PAD - sw, logoBottom + 22, sw, sh));
   } else if (post.meta?.source && !post.visual?.hide_source_logo) {
     const id = sourceIdentity(post.meta.source);
-    if (id) drawEmblem(ctx, id, VW - PAD, logoBottom + 18, post.meta.source);
+    if (id) wrap("sourceLogo", VW - PAD, logoBottom + 18, () => drawEmblem(ctx, id, VW - PAD, logoBottom + 18, post.meta.source));
   }
 
   return bannerBottom + 40;
