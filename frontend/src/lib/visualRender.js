@@ -218,6 +218,11 @@ function wrapWords(ctx, text, maxW) {
   const lines = [];
   String(text || "").split(/\n/).forEach((para) => {
     const words = para.split(/\s+/).filter(Boolean);
+    // an empty line typed by the user (Enter twice) = space between paragraphs on the visual
+    if (!words.length) {
+      if (lines.length) { const gap = []; gap.hard = true; gap.blank = true; lines.push(gap); }
+      return;
+    }
     let line = [];
     for (const w of words) {
       const test = [...line, w].join(" ");
@@ -250,9 +255,12 @@ function drawParagraph(ctx, text, x, y, maxW, lineH, justify, maxLines = 99, dra
   const lines = wrapWords(ctx, fitSentences(ctx, text, maxW, maxLines), maxW);
   if (lines.length > maxLines) {
     lines.length = maxLines;
-    const last = lines[maxLines - 1];
-    while (last.length > 1 && ctx.measureText(last.join(" ") + "…").width > maxW) last.pop();
-    last[last.length - 1] = last[last.length - 1].replace(/[,;:.]$/, "") + "…";
+    while (lines.length > 1 && lines[lines.length - 1].blank) lines.pop(); // never end on an empty line
+    const last = lines[lines.length - 1];
+    if (last.length) {
+      while (last.length > 1 && ctx.measureText(last.join(" ") + "…").width > maxW) last.pop();
+      last[last.length - 1] = last[last.length - 1].replace(/[,;:.]$/, "") + "…";
+    }
   }
   if (!draw) return y + lines.length * lineH;
   let cy = y;
