@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { NumInput } from "@/components/NumInput";
 import { resolveContent, hasChart } from "@/lib/visualRender";
 import { PenLine, ChevronDown, Plus, Trash2, RotateCcw, Type, Hash, Quote, List, MoveVertical, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, Columns2, Briefcase } from "lucide-react";
 
@@ -365,7 +366,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       <span className="w-32 shrink-0 text-xs font-medium text-forsides-ink">{label}</span>
       <input type="range" min={0.7} max={1.4} step={0.05} value={Number(value) || 1} aria-label={label} data-testid={testid}
         onChange={(e) => onChange(Number(e.target.value))} className="flex-1 accent-[#C0453A]" />
-      <span className="w-11 text-right font-mono text-xs text-forsides-slate">{Math.round((Number(value) || 1) * 100)} %</span>
+      <NumInput value={Number(value) || 1} min={70} max={140} scale={100} suffix="%" label={`${label} (%)`} onChange={onChange} />
     </div>
   );
   // "Position du texte": moves the content up/down (also by dragging on the preview with "Déplacer")
@@ -379,7 +380,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
         </span>
         <input type="range" min={-300} max={300} step={5} value={val} aria-label="Position verticale du texte"
           data-testid={`visual-pos-${key}`} onChange={(e) => set(Number(e.target.value))} className="flex-1 accent-[#C0453A]" />
-        <span className="w-14 text-right font-mono text-xs text-forsides-slate">{val > 0 ? `↓ ${val}` : val < 0 ? `↑ ${-val}` : "0"}</span>
+        <NumInput value={val} min={-400} max={400} label="Position du texte (négatif = plus haut)" testid={`visual-pos-num-${key}`} onChange={set} />
         {val !== 0 && (
           <button type="button" onClick={() => set(0)} title="Remettre à sa place" aria-label="Remettre à sa place"
             className="text-slate-400 hover:text-forsides-red"><RotateCcw className="h-3.5 w-3.5" /></button>
@@ -529,19 +530,19 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
                     <span className="w-14 shrink-0">Taille</span>
                     <input type="range" min={0.5} max={1.6} step={0.05} value={sz} aria-label={`Taille : ${label}`}
                       onChange={(e) => set(id, { s: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-                    <span className="w-10 text-right font-mono">{Math.round(sz * 100)}%</span>
+                    <NumInput value={sz} min={50} max={160} scale={100} suffix="%" label={`Taille : ${label} (%)`} className="w-14" onChange={(n) => set(id, { s: n })} />
                   </label>
                   <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
                     <span className="w-14 shrink-0">Horizontal</span>
                     <input type="range" min={-400} max={400} step={5} value={x} aria-label={`Position horizontale : ${label}`}
                       onChange={(e) => set(id, { x: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-                    <span className="w-10 text-right font-mono">{x > 0 ? `→${x}` : x < 0 ? `←${-x}` : "0"}</span>
+                    <NumInput value={x} min={-500} max={500} label={`Horizontal : ${label}`} className="w-14" onChange={(n) => set(id, { x: n })} />
                   </label>
                   <label className="flex items-center gap-2 text-[11px] text-forsides-slate">
                     <span className="w-14 shrink-0">Vertical</span>
                     <input type="range" min={-300} max={300} step={5} value={y} aria-label={`Position : ${label}`}
                       onChange={(e) => set(id, { y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-                    <span className="w-10 text-right font-mono">{y > 0 ? `↓${y}` : y < 0 ? `↑${-y}` : "0"}</span>
+                    <NumInput value={y} min={-400} max={400} label={`Vertical : ${label}`} className="w-14" onChange={(n) => set(id, { y: n })} />
                   </label>
                 </div>
               </div>

@@ -1475,11 +1475,11 @@ Renvoie STRICTEMENT ce JSON:
                     e = {}
                     try:
                         if "s" in val:
-                            e["s"] = max(0.5, min(1.6, float(val["s"])))
+                            e["s"] = max(0.5, min(1.6, round(float(val["s"]), 4)))
                         if "y" in val:
-                            e["y"] = max(-400, min(400, int(float(val["y"]))))
+                            e["y"] = max(-400.0, min(400.0, round(float(val["y"]), 2)))
                         if "x" in val:
-                            e["x"] = max(-500, min(500, int(float(val["x"]))))
+                            e["x"] = max(-500.0, min(500.0, round(float(val["x"]), 2)))
                     except (TypeError, ValueError):
                         continue
                     clean_el[str(k)[:60]] = e
@@ -1512,7 +1512,7 @@ Renvoie STRICTEMENT ce JSON:
             clean_co = {}
             for k, val in co.items():
                 try:
-                    clean_co[str(k)[:40]] = max(-400, min(400, int(float(val))))
+                    clean_co[str(k)[:40]] = max(-400.0, min(400.0, round(float(val), 2)))
                 except (TypeError, ValueError):
                     pass
             vis["content_offset"] = {**((post.get("visual") or {}).get("content_offset") or {}), **clean_co}

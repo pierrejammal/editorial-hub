@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { NumInput } from "@/components/NumInput";
 import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
 import { saveTemplate } from "@/lib/api";
@@ -200,9 +201,10 @@ export const TemplateEditor = ({ version = "A", pageIndex = 0 }) => {
                 <Label>{label}</Label>
                 <div className="flex items-center gap-2">
                   <input type="range" data-testid={testid} min={min} max={max} step={0.05} aria-label={label}
-                    value={Number(template[k]) || 1} onChange={(e) => set({ [k]: Number(e.target.value) })}
+                    value={Number(vals[k]) || 1} onChange={(e) => set({ [k]: Number(e.target.value) })}
                     className="flex-1 accent-[#C0453A]" />
-                  <span className="w-11 text-right font-mono text-xs text-forsides-slate">{Math.round((Number(template[k]) || 1) * 100)} %</span>
+                  <NumInput value={Number(vals[k]) || 1} min={min * 100} max={max * 100} scale={100} suffix="%" label={`${label} (%)`}
+                    onChange={(n) => set({ [k]: n })} />
                 </div>
               </div>
             ))}

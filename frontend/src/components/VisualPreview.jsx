@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { NumInput } from "@/components/NumInput";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useStudio } from "@/context/StudioContext";
@@ -342,7 +343,8 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
             onChange={(e) => updateVisual({ source_logo_scale: Number(e.target.value) })}
             className="w-full accent-forsides-red"
           />
-          <span className="w-10 text-right font-mono">{Math.round((Number(v.source_logo_scale) || 1.3) * 100)} %</span>
+          <NumInput value={Number(v.source_logo_scale) || 1.3} min={60} max={200} scale={100} suffix="%" label="Taille du logo (%)"
+            onChange={(n) => updateVisual({ source_logo_scale: n })} />
         </label>
       )}
       <input ref={logoInput} type="file" accept="image/*" hidden onChange={onLogoFile} />
@@ -514,9 +516,9 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   deleteSelRef.current = deleteSel;
   const elPopover = selEl && selBox && (
     <div data-testid="visual-el-popover" onClick={(e) => e.stopPropagation()}
-      className="absolute z-20 w-64 rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
+      className="absolute z-20 w-72 rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
       style={{
-        left: `min(${pct(Math.max(0, selBox.x0), VW)}, calc(100% - 16.5rem))`,
+        left: `min(${pct(Math.max(0, selBox.x0), VW)}, calc(100% - 18.5rem))`,
         ...(selBox.y1 / VH > 0.62 ? { bottom: pct(VH - selBox.y0 + 16, VH) } : { top: pct(selBox.y1 + 16, VH) }),
       }}>
       <div className="mb-2 flex items-center justify-between">
@@ -527,19 +529,22 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         <span className="w-14">Taille</span>
         <input type="range" min={0.5} max={1.6} step={0.05} value={Number(selCur.s) || 1} data-testid="visual-el-size"
           onChange={(e) => setSel({ s: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-        <span className="w-9 text-right font-mono">{Math.round((Number(selCur.s) || 1) * 100)}%</span>
+        <NumInput value={Number(selCur.s) || 1} min={50} max={160} scale={100} suffix="%" label="Taille (%)" testid="visual-el-size-num"
+          className="w-14" onChange={(n) => setSel({ s: n })} />
       </label>
       <label className="mt-1.5 flex items-center gap-2 text-forsides-slate">
         <span className="w-14">Horizontal</span>
         <input type="range" min={-400} max={400} step={5} value={Number(selCur.x) || 0} data-testid="visual-el-x"
           onChange={(e) => setSel({ x: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-        <span className="w-9 text-right font-mono">{(Number(selCur.x) || 0) > 0 ? `→${selCur.x}` : (Number(selCur.x) || 0) < 0 ? `←${-selCur.x}` : "0"}</span>
+        <NumInput value={Number(selCur.x) || 0} min={-500} max={500} label="Horizontal (négatif = à gauche)" testid="visual-el-x-num"
+          className="w-14" onChange={(n) => setSel({ x: n })} />
       </label>
       <label className="mt-1.5 flex items-center gap-2 text-forsides-slate">
         <span className="w-14">Vertical</span>
         <input type="range" min={-300} max={300} step={5} value={Number(selCur.y) || 0} data-testid="visual-el-pos"
           onChange={(e) => setSel({ y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
-        <span className="w-9 text-right font-mono">{(Number(selCur.y) || 0) > 0 ? `↓${selCur.y}` : (Number(selCur.y) || 0) < 0 ? `↑${-selCur.y}` : "0"}</span>
+        <NumInput value={Number(selCur.y) || 0} min={-400} max={400} label="Vertical (négatif = plus haut)" testid="visual-el-y-num"
+          className="w-14" onChange={(n) => setSel({ y: n })} />
       </label>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="flex gap-1">
