@@ -10,7 +10,7 @@ import { jpegsToPdf } from "@/lib/pdf";
 import { prepareLogo } from "@/lib/logoImage";
 import { resolveSourceLogo } from "@/lib/sourceLogo";
 import {
-  renderVisual, loadImage, hasChart, VW, VH, FONT_SET,
+  renderVisual, loadImage, hasChart, VW, VH, FONT_SET, resolveContent,
 } from "@/lib/visualRender";
 
 // "K" = carousel: the preview shows its pages one by one, download gives the PDF
@@ -23,7 +23,7 @@ const initialFormat = (post) => {
   return f === "B" ? "B" : "A";
 };
 import {
-  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal, Maximize2, X, Move,
+  Download, LayoutTemplate, Type, Upload, FileDown, Columns2, Check, GalleryHorizontal, Maximize2, X, Move, Trash2,
 } from "lucide-react";
 
 const ConceptThumb = ({ post, version, images, fontsReady, active, onChoose, label, template }) => {
@@ -79,6 +79,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const [elBoxes, setElBoxes] = useState([]);
   const [hoverKey, setHoverKey] = useState(null);
   const [selEl, setSelEl] = useState(null);
+  const deleteSelRef = useRef(null);
   const isCarousel = version === "K";
   // "Mis à jour par l'IA": flash + badge on the preview, and the carousel page to jump to
   const [aiFlash, setAiFlash] = useState(null);
@@ -405,7 +406,12 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   useEffect(() => { setSelEl(null); setHoverKey(null); }, [carPage, version]);
   useEffect(() => {
     if (!selEl) return undefined;
-    const onKey = (e) => e.key === "Escape" && setSelEl(null);
+    const onKey = (e) => {
+      if (e.key === "Escape") setSelEl(null);
+      // Suppr / ⌫ deletes the selected element (not while typing in a field)
+      const typing = /input|textarea|select/i.test(e.target?.tagName || "") || e.target?.isContentEditable;
+      if ((e.key === "Delete" || e.key === "Backspace") && !typing) { e.preventDefault(); deleteSelRef.current?.(); }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selEl]);
@@ -466,6 +472,46 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     setSelEl(null);
     toast.message("Élément masqué", { description: "Pour le remettre : « Modifier le texte du visuel » → Taille et position de chaque élément." });
   };
+  // "Supprimer": removes the element for good when it is content (a point, an added section, an added
+  // page), otherwise it is hidden (fixed parts of the template). Always undoable from the message.
+  const deleteSel = () => {
+    if (!selEl) return;
+    const [kind, ...rest] = String(selEl).split(":");
+    const id = rest.join(":");
+    const before = {
+      page_blocks: v.page_blocks, custom: v.custom, extra_pages: v.extra_pages, hidden: v.hidden, page_source: v.page_source,
+    };
+    let what = "Élément supprimé";
+    if (id.startsWith("blk-")) {
+      const bid = id.slice(4);
+      const pb = { ...(v.page_blocks || {}) };
+      pb[kind] = (pb[kind] || []).filter((b) => b.id !== bid);
+      updateVisual({ page_blocks: pb });
+      what = "Partie supprimée";
+    } else if (id.startsWith("pt-")) {
+      const shownPts = resolveContent(localPost, title).points;
+      const target = shownPts[Number(id.slice(3))];
+      const base = Array.isArray(v.custom?.points) ? v.custom.points : shownPts;
+      const idx = base.findIndex((p) => p && target && (p.label || "") === (target.label || "") && (p.text || "") === (target.text || ""));
+      if (idx < 0) return;
+      updateVisual({ custom: { ...(v.custom || {}), points: base.filter((_, i) => i !== idx) } });
+      what = "Point supprimé";
+    } else if (kind.startsWith("extra-") && id === "body") {
+      updateVisual({ extra_pages: (v.extra_pages || []).filter((x) => `extra-${x.id}` !== kind) });
+      setCarPage((p) => Math.max(0, p - 1));
+      what = "Page supprimée";
+    } else if (id === "source") {
+      updateVisual({ page_source: { ...(v.page_source || {}), [kind]: false } });
+      what = "Source retirée de la page";
+    } else {
+      updateVisual({ hidden: { ...(v.hidden || {}), [`${kind}.${id}`]: true } });
+      what = "Élément retiré de la page";
+    }
+    setSelEl(null);
+    setHoverKey(null);
+    toast.success(what, { action: { label: "Annuler", onClick: () => updateVisual(before) } });
+  };
+  deleteSelRef.current = deleteSel;
   const elPopover = selEl && selBox && (
     <div data-testid="visual-el-popover" onClick={(e) => e.stopPropagation()}
       className="absolute z-20 w-64 rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
@@ -495,7 +541,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
           onChange={(e) => setSel({ y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
         <span className="w-9 text-right font-mono">{(Number(selCur.y) || 0) > 0 ? `↓${selCur.y}` : (Number(selCur.y) || 0) < 0 ? `↑${-selCur.y}` : "0"}</span>
       </label>
-      <div className="mt-2 flex items-center justify-between">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="flex gap-1">
           <button type="button" aria-label="Monter" onClick={() => setSel({ y: Math.max(-300, (Number(selCur.y) || 0) - 10) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">↑</button>
           <button type="button" aria-label="Descendre" onClick={() => setSel({ y: Math.min(300, (Number(selCur.y) || 0) + 10) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">↓</button>
@@ -503,6 +549,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
           <button type="button" aria-label="Plus grand" onClick={() => setSel({ s: Math.min(1.6, Math.round(((Number(selCur.s) || 1) + 0.05) * 100) / 100) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">A+</button>
         </span>
         <button type="button" data-testid="visual-el-hide" onClick={hideSel} className="text-slate-500 hover:text-forsides-red">Masquer</button>
+        <button type="button" data-testid="visual-el-delete" onClick={deleteSel} title="Supprimer (touche Suppr)"
+          className="inline-flex items-center gap-1 font-semibold text-forsides-red hover:text-forsides-bordeaux">
+          <Trash2 className="h-3.5 w-3.5" /> Supprimer
+        </button>
         {(selCur.s || selCur.y || selCur.x) ? (
           <button type="button" onClick={() => { const next = { ...elAll }; delete next[selEl]; updateVisual({ el: next }); }}
             className="text-slate-400 hover:text-forsides-red">Rétablir</button>
