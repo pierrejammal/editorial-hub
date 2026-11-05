@@ -147,24 +147,29 @@ function deco(ctx, d, id, ax, ay, fn) {
 // (each line is an element of its own: it can be clicked, moved, resized or removed)
 const NOT_PARTS = new Set(["banner", "logo", "pageNum", "swipe", "signature", "quoteOpen", "quoteClose", "rule",
   "separators", "heading", "date", "sourceLogo"]);
+// Lines are chosen one by one in the editor: visual.lines_after[kind] = ids of the parts followed by a line
+// (the old page-wide "dividers" switch still works for posts that used it)
 function drawDividers(ctx, d, kind) {
-  if (!(d.v.dividers || {})[kind]) return;
+  const everywhere = Boolean((d.v.dividers || {})[kind]);
+  const after = ((d.v.lines_after || {})[kind]) || [];
+  if (!everywhere && !after.length) return;
   const merged = {};
   BOXES.forEach((b) => {
     const id = b.key.split(":").slice(1).join(":");
     if (NOT_PARTS.has(id) || id.startsWith("div-")) return;
     const key = id === "chartTitle" ? `${kind}:chart` : b.key; // a chart and its title are one part
     const m = merged[key];
-    merged[key] = m ? { ...m, y0: Math.min(m.y0, b.y0), y1: Math.max(m.y1, b.y1) } : { ...b };
+    merged[key] = m ? { ...m, y0: Math.min(m.y0, b.y0), y1: Math.max(m.y1, b.y1) } : { ...b, key };
   });
   const list = Object.values(merged).sort((a, b) => a.y0 - b.y0);
   // drop blocks contained in another one (e.g. a part inside a larger part)
   const parts = list.filter((b) => !list.some((o) => o !== b && o.y0 <= b.y0 && o.y1 >= b.y1 && (o.y1 - o.y0) > (b.y1 - b.y0)));
   for (let i = 0; i < parts.length - 1; i++) {
+    const idA = parts[i].key.split(":").slice(1).join(":");
+    if (!everywhere && !after.includes(idA)) continue;
     const gap = parts[i + 1].y0 - parts[i].y1;
-    if (gap < 18) continue;
-    const y = Math.round((parts[i].y1 + parts[i + 1].y0) / 2);
-    deco(ctx, d, `div-${i}`, PAD, y, () => { ctx.fillStyle = DOT; ctx.fillRect(PAD, y - 1, MAXW, 2); });
+    const y = Math.round(gap >= 8 ? (parts[i].y1 + parts[i + 1].y0) / 2 : parts[i].y1 + 4);
+    deco(ctx, d, `div-${idA}`, PAD, y, () => { ctx.fillStyle = DOT; ctx.fillRect(PAD, y - 1, MAXW, 2); });
   }
 }
 
@@ -318,14 +323,14 @@ function drawTopBlocks(ctx, d, y0) {
   if (!blocks.length) return 0;
   let y = y0 + 34; // breathing room under the page title
   blocks.forEach((b) => { y += withEl(ctx, d, `blk-${b.id}`, () => drawBlock(ctx, b, y, k * elScale(d, `blk-${b.id}`), true)) + BLOCK_GAP; });
-  if (!(d.v.dividers || {})[CUR_KIND]) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y - 10, MAXW, 2); } // else drawn by the dividers
+  // no automatic line: lines are added one by one in the editor
   return h + 34;
 }
 function drawPageBlocks(ctx, d, bottom) {
   const { h, k, blocks } = blocksFit(ctx, d, "bottom");
   if (!blocks.length) return;
   let y = bottom - h + 20;
-  if (!(d.v.dividers || {})[CUR_KIND]) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y, MAXW, 2); } // else drawn by the dividers
+  // no automatic line: lines are added one by one in the editor
   y += 30;
   blocks.forEach((b) => { y += withEl(ctx, d, `blk-${b.id}`, () => drawBlock(ctx, b, y, k * elScale(d, `blk-${b.id}`), true)) + BLOCK_GAP; });
 }
@@ -680,7 +685,7 @@ function essentialPage(ctx, d, images, n, total) {
   const dv = (d.v.dividers || {})[CUR_KIND];
   parts.forEach((p, idx) => withEl(ctx, d, partId(p), () => {
     if (p.k === "blk") {
-      if (idx > 0 && !dv) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y + 30, MAXW, 2); }
+      void dv;
       drawBlock(ctx, p.b, y + (idx > 0 ? 54 : 0), blkK(p.b), true);
       y += p.h - (idx > 0 ? 0 : 54);
       return;
@@ -841,7 +846,7 @@ function dataPage(ctx, d, images, n, total) {
       SEGS[`blk-${b.id}`] = (first) => {
         const hb = blkH(b);
         withEl(ctx, d, `blk-${b.id}`, () => {
-          if (!first && !dv) { ctx.fillStyle = DOT; ctx.fillRect(PAD, y + 26, MAXW, 2); }
+          void dv;
           drawBlock(ctx, b, y + (first ? 0 : 50), blkK(b), true);
         });
         y += (first ? 0 : 50) + hb + 20;

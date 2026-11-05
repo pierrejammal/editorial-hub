@@ -562,7 +562,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       ...rows.filter(([id]) => (id === "source" ? (v.page_source || {})[kind] === false : hiddenMap[`${kind}.${id}`])),
       // removed separator lines ("Traits entre les parties")
       ...Object.keys(hiddenMap).filter((k) => hiddenMap[k] && k.startsWith(`${kind}.div-`))
-        .map((k) => [k.slice(kind.length + 1), `Trait ${Number(k.split("div-")[1]) + 1}`]),
+        .map((k) => [k.slice(kind.length + 1), "Trait de séparation"]),
     ];
     const show = (id) => (id === "source"
       ? updateVisual({ page_source: { ...(v.page_source || {}), [kind]: true } })
@@ -718,7 +718,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
       const b = ((v.page_blocks || {})[kind] || []).find((x) => `blk-${x.id}` === id);
       return `Partie ajoutée${b ? ` · ${EXTRA_TYPES.find((t) => t.type === b.type)?.label || ""}` : ""}`;
     }
-    if (id.startsWith("div-")) return `Trait ${Number(id.slice(4)) + 1}`;
+    if (id.startsWith("div-")) return "Trait de séparation";
     if (id.startsWith("sum-")) return `Résumé · paragraphe ${Number(id.slice(4)) + 1}`;
     if (id === "coverDate") return "Date";
     return EL_LABEL[id] || id;
@@ -800,6 +800,37 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     if (id === "body" && extraOf(kind)) return extraEditor(extraOf(kind));
     return null;
   };
+  // "＋ Trait ici": a line between two parts, placed one by one
+  const NO_LINE = new Set(["heading", "swipe", "coverDate"]);
+  const lineToggle = (kind, idA, idB) => {
+    if (NO_LINE.has(idA) || NO_LINE.has(idB)) return null;
+    const after = ((v.lines_after || {})[kind]) || [];
+    const everywhere = Boolean((v.dividers || {})[kind]);
+    const on = (everywhere || after.includes(idA)) && !hiddenMap[`${kind}.div-${idA}`];
+    const toggle = () => {
+      let next = after;
+      if (everywhere) { // turn the old page-wide switch into one line per gap, then change this one
+        next = pageIds(kind).filter((x) => !NO_LINE.has(x) && !GRAPHIC.has(x) && !x.startsWith("div-"));
+        next = next.slice(0, -1);
+      }
+      next = on ? next.filter((x) => x !== idA) : [...new Set([...next, idA])];
+      updateVisual({
+        lines_after: { ...(v.lines_after || {}), [kind]: next },
+        ...(everywhere ? { dividers: { ...(v.dividers || {}), [kind]: false } } : {}),
+        hidden: { ...hiddenMap, [`${kind}.div-${idA}`]: false },
+      });
+    };
+    return (
+      <div className="flex items-center gap-2 px-2" data-testid={`visual-line-${idA}`}>
+        <span className={`h-px flex-1 ${on ? "bg-forsides-red/60" : "border-t border-dashed border-slate-200"}`} />
+        <button type="button" onClick={toggle} title={on ? "Retirer le trait" : "Ajouter un trait entre ces deux parties"}
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${on ? "bg-forsides-red/10 text-forsides-red hover:bg-forsides-red/20" : "text-slate-400 hover:bg-slate-100 hover:text-forsides-red"}`}>
+          {on ? "✓ Trait · retirer" : "＋ Trait ici"}
+        </button>
+        <span className={`h-px flex-1 ${on ? "bg-forsides-red/60" : "border-t border-dashed border-slate-200"}`} />
+      </div>
+    );
+  };
   const pageSections = (kind) => {
     const ids = pageIds(kind);
     const content = ids.filter((id) => !GRAPHIC.has(id) && !id.startsWith("div-"));
@@ -808,7 +839,9 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
     return (
       <div className="space-y-2" data-testid="visual-page-sections">
         {content.map((id, n) => (
-          <div key={id} className="rounded-lg border border-slate-200 bg-white p-2.5" data-testid={`visual-section-${id}`}>
+          <React.Fragment key={id}>
+          {n > 0 && lineToggle(kind, content[n - 1], id)}
+          <div className="rounded-lg border border-slate-200 bg-white p-2.5" data-testid={`visual-section-${id}`}>
             <div className="mb-1.5 flex items-center gap-2">
               <span className="font-mono text-[10px] text-slate-400">{n + 1}</span>
               <span className="text-xs font-semibold text-forsides-ink">{elLabel(kind, id)}</span>
@@ -817,6 +850,7 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
             </div>
             {sectionBody(kind, id)}
           </div>
+          </React.Fragment>
         ))}
         {graphics.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs" data-testid="visual-page-graphics">
@@ -920,11 +954,6 @@ export const VisualTextEditor = ({ post, title, version, updateVisual, carKinds 
               {pageSize(activeKind, activeKind === "cover" ? "Taille du titre" : "Taille du texte")}
               {posBar(`k:${activeKind}`)}
               {elPanel(activeKind)}
-              <label className="inline-flex items-center gap-2 text-xs text-forsides-ink">
-                <input type="checkbox" data-testid={`visual-dividers-${activeKind}`} checked={Boolean((v.dividers || {})[activeKind])}
-                  onChange={(e) => updateVisual({ dividers: { ...(v.dividers || {}), [activeKind]: e.target.checked } })} />
-                Traits entre les parties
-              </label>
               {pageSections(activeKind)}
               {extraOf(activeKind) && !pageIds(activeKind).includes("body") && extraEditor(extraOf(activeKind))}
               {activeKind === "points" && (

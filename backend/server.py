@@ -1226,7 +1226,7 @@ ASSIST_VISUAL_KEYS = {"title_short", "subtitle", "key_figure_value", "key_figure
                       "hide_source_logo", "source_logo_scale", "hide_date", "cta_question", "cta_text",
                       "labels", "carousel_labels", "source_label", "date_label",
                       "text_scale", "title_scale", "page_text_scale", "extra_pages", "content_offset", "page_blocks",
-                      "extra_sources", "page_source", "hidden", "page_order", "el", "dividers", "part_order"}
+                      "extra_sources", "page_source", "hidden", "page_order", "el", "dividers", "part_order", "lines_after"}
 EXTRA_PAGE_FIELDS = {"id", "type", "title", "text", "value", "label", "after", "col1t", "col1", "col2t", "col2", "intro", "cta"}
 ASSIST_LABEL_KEYS = {"essential", "figures", "atSource", "source", "sources", "deadline"}
 ASSIST_CAROUSEL_LABEL_KEYS = {"swipe", "source", "sources", "essential", "figures", "keyFigures", "deadline",
@@ -1394,7 +1394,8 @@ Ce que tu peux modifier:
   takeaway:quoteOpen|quoteClose|rule|signature (masquer: visual.hidden "<page>.<élément>": true)
   éléments: cover:title, cover:source, <page>:heading, essential:figure|summary|facts|source, data:chartTitle|chart|note|facts|date,
   points:pt-<n° du point>, takeaway:quote|cta, extra-<id>:body, <page>:blk-<id> (parties ajoutées). Renvoie l'objet complet.
-- traits de séparation entre les parties d'une page: visual.dividers {{"<page>": true/false}} (un trait retiré: hidden "<page>.div-<n>").
+- traits de séparation, posés un par un: visual.lines_after {{"<page>": ["<élément suivi d'un trait>", ...]}} (ex. {{"data": ["chart"]}}
+  = un trait sous le graphique); liste complète.
 - ordre des parties dans une page (échange de place): visual.part_order {{"essential": ["figure","summary","facts","source"] dans l'ordre voulu,
   "data": ["chart","note","facts"]}}; ordre des points = ordre de visual.custom.points.
 - ordre des pages du carrousel: visual.page_order ["cover", "data", "essential", "points", "extra-<id>", "takeaway"] (null = ordre d'origine).
@@ -1496,6 +1497,13 @@ Renvoie STRICTEMENT ce JSON:
                                  **{str(k)[:40]: [str(x)[:20] for x in v[:8] if isinstance(x, str)] for k, v in po.items() if isinstance(v, list)}}
         else:
             vis.pop("part_order")
+    if "lines_after" in vis:
+        la = vis["lines_after"]
+        if isinstance(la, dict):
+            vis["lines_after"] = {**((post.get("visual") or {}).get("lines_after") or {}),
+                                  **{str(k)[:40]: [str(x)[:40] for x in v[:20] if isinstance(x, str)] for k, v in la.items() if isinstance(v, list)}}
+        else:
+            vis.pop("lines_after")
     if "dividers" in vis:
         dv = vis["dividers"]
         if isinstance(dv, dict):
