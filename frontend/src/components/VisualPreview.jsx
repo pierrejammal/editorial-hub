@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { forsidesLogoUrl } from "@/components/BrandLogo";
 import { NumInput } from "@/components/NumInput";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -141,7 +142,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       .then(() => !cancelled && setFontsReady(true))
       .catch(() => !cancelled && setFontsReady(true));
     const t = setTimeout(() => !cancelled && setFontsReady(true), 1600);
-    loadImage("/forsides-logo.png").then((img) => !cancelled && setLogoImg(img));
+    loadImage(forsidesLogoUrl).then((img) => !cancelled && setLogoImg(img)).catch(() => {});
     return () => { cancelled = true; clearTimeout(t); };
   }, []);
 

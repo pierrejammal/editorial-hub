@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Settings2, FilePen } from "lucide-react";
 import { useStudio } from "@/context/StudioContext";
@@ -32,7 +33,7 @@ export const BrandHeader = () => {
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-3 sm:px-6">
         <Link to="/" data-testid="brand-logo" className="group flex shrink-0 items-center gap-3">
-          <img src="/forsides-logo.png" alt="FORSIDES, Solutions actuarielles" className="h-10 w-auto sm:h-11" />
+          <BrandLogo className="h-10 w-auto sm:h-11" />
           <span className="hidden border-l border-slate-300 pl-3 text-[10px] uppercase tracking-[0.28em] text-forsides-slate xl:inline">
             News Studio
           </span>

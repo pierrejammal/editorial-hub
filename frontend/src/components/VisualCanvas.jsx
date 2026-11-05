@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { forsidesLogoUrl } from "@/components/BrandLogo";
 import { renderVisual, loadImage, FONT_SET, VW, VH } from "@/lib/visualRender";
 import { resolveSourceLogo } from "@/lib/sourceLogo";
 import { renderCarousel } from "@/lib/carouselRender";
@@ -14,7 +15,7 @@ export const VisualCanvas = ({ post, version = "A", page = null, className = "",
     let cancelled = false;
     const draw = async () => {
       const [logoImg, { img: sourceLogoImg }] = await Promise.all([
-        loadImage("/forsides-logo.png"),
+        loadImage(forsidesLogoUrl),
         resolveSourceLogo(post),
       ]);
       const c = ref.current;

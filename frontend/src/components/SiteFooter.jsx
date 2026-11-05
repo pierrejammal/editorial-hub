@@ -1,4 +1,5 @@
 import React from "react";
+import { BrandLogo } from "@/components/BrandLogo";
 import { Link } from "react-router-dom";
 
 const COLS = [
@@ -12,7 +13,7 @@ export const SiteFooter = () => (
       <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
         <div className="lg:col-span-5">
           <Link to="/" className="inline-flex items-center gap-4">
-            <img src="/forsides-logo-dark.png" alt="FORSIDES, Solutions actuarielles" className="h-14 w-auto" />
+            <BrandLogo dark className="h-14 w-auto" />
             <span className="border-l border-white/20 pl-4 text-[10px] uppercase tracking-[0.28em] text-white/70">News Studio</span>
           </Link>
           <p className="mt-6 max-w-[28ch] font-serif text-2xl italic text-white/60">For you, by your side.</p>
