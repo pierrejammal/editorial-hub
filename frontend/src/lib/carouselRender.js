@@ -55,13 +55,62 @@ function elDy(d, id) {
   const n = Number(((d.v.el || {})[elKey(id)] || {}).y);
   return Number.isFinite(n) ? Math.max(-400, Math.min(400, n)) : 0;
 }
-// draws one element moved by its own offset
+// ---------- where each element is drawn (so a click on the preview can select it) ----------
+let TRACKERS = [];
+let BOXES = [];
+function startTrack(key) {
+  const t = { key, x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  TRACKERS.push(t);
+  return t;
+}
+function endTrack(t) {
+  TRACKERS = TRACKERS.filter((x) => x !== t);
+  if (t.x1 > t.x0 && t.y1 > t.y0) BOXES.push({ key: t.key, x0: t.x0, y0: t.y0, x1: t.x1, y1: t.y1 });
+}
+function noteBox(ctx, x0, y0, x1, y1) {
+  if (!TRACKERS.length) return;
+  const m = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  [[x0, y0], [x1, y1], [x0, y1], [x1, y0]].forEach(([x, y]) => {
+    const px = m ? m.a * x + m.c * y + m.e : x;
+    const py = m ? m.b * x + m.d * y + m.f : y;
+    TRACKERS.forEach((t) => {
+      t.x0 = Math.min(t.x0, px); t.y0 = Math.min(t.y0, py);
+      t.x1 = Math.max(t.x1, px); t.y1 = Math.max(t.y1, py);
+    });
+  });
+}
+// records the area of every text / shape drawn while an element is being tracked
+function instrument(ctx) {
+  const ft = ctx.fillText.bind(ctx);
+  const fr = ctx.fillRect.bind(ctx);
+  const ar = ctx.arc.bind(ctx);
+  ctx.fillText = (t, x, y, ...rest) => {
+    if (TRACKERS.length) {
+      const px = Number((/(\d+(?:\.\d+)?)px/.exec(ctx.font) || [])[1]) || 20;
+      const w = ctx.measureText(String(t)).width;
+      const a = ctx.textAlign;
+      const xs = a === "right" || a === "end" ? x - w : a === "center" ? x - w / 2 : x;
+      noteBox(ctx, xs, y - px * 0.85, xs + w, y + px * 0.25);
+    }
+    return ft(t, x, y, ...rest);
+  };
+  ctx.fillRect = (x, y, w, h) => { noteBox(ctx, x, y, x + w, y + h); return fr(x, y, w, h); };
+  ctx.arc = (x, y, r, ...rest) => { noteBox(ctx, x - r, y - r, x + r, y + r); return ar(x, y, r, ...rest); };
+}
+function track(ctx, key, fn) {
+  const t = startTrack(key);
+  try { return fn(); } finally { endTrack(t); }
+}
+
+// draws one element moved by its own offset (and records where it is)
 function withEl(ctx, d, id, fn) {
   const dy = elDy(d, id);
-  if (!dy) return fn();
-  ctx.save();
-  ctx.translate(0, dy);
-  try { return fn(); } finally { ctx.restore(); }
+  return track(ctx, elKey(id), () => {
+    if (!dy) return fn();
+    ctx.save();
+    ctx.translate(0, dy);
+    try { return fn(); } finally { ctx.restore(); }
+  });
 }
 
 // elements removed by the user on a page ("Ce qui s'affiche sur cette page"): visual.hidden["data.chart"] = true…
@@ -516,6 +565,7 @@ function dataPage(ctx, d, images, n, total) {
       y += 60 + gapExtra;
       const fdy = elDy(d, "facts");
       y += fdy;
+      const tf = startTrack(elKey("facts"));
       facts.forEach((f, i) => {
         drawBullet(ctx, PAD, y + 6, 18, i % 2 === 0 ? BRICK : CORAL);
         ctx.fillStyle = BORDEAUX;
@@ -523,6 +573,7 @@ function dataPage(ctx, d, images, n, total) {
         const end = drawParagraph(ctx, f, PAD + 50, y + factPx - 4, MAXW - 50, m.flh, false, 2);
         y = end - m.flh + 20 + 14;
       });
+      endTrack(tf);
       y -= fdy;
     }
     ctx.restore();
@@ -547,6 +598,7 @@ function dataPage(ctx, d, images, n, total) {
     y += elDy(d, "facts");
     const avail = VH - 220 - res - y;
     const per = items.length ? avail / items.length : 0;
+    const ti = startTrack(elKey("facts"));
     items.forEach((t, i) => {
       ctx.fillStyle = i % 2 === 0 ? BRICK : CORAL;
       drawBullet(ctx, PAD, y + 8, 18, ctx.fillStyle);
@@ -555,6 +607,7 @@ function dataPage(ctx, d, images, n, total) {
       drawParagraph(ctx, b.text, PAD + 50, y + b.px * 0.8, MAXW - 50, b.lh, false, b.maxLines);
       y += per;
     });
+    endTrack(ti);
   }
   drawPageBlocks(ctx, d, VH - 170);
   swipeHint(ctx);
@@ -660,6 +713,7 @@ function extraPage(ctx, d, images, n, total, x) {
   ctx.save(); // the page body moves with its own "Position"
   const bodyDy = elDy(d, "body");
   if (bodyDy) ctx.translate(0, bodyDy);
+  const tb = startTrack(elKey("body"));
 
   if (type === "figure") {
     const value = clean(x.value);
@@ -726,6 +780,7 @@ function extraPage(ctx, d, images, n, total, x) {
     ctx.font = `500 ${b.px}px Outfit`;
     drawParagraph(ctx, b.text, PAD, y0 + b.px, MAXW, b.lh, false, b.maxLines);
   }
+  endTrack(tb);
   ctx.restore();
   drawPageBlocks(ctx, d, VH - 190);
   swipeHint(ctx);
@@ -807,8 +862,12 @@ export function renderCarousel(post, images, makeCanvas, template) {
     CUR_KIND = draw.kind;
     SHIFTED = false;
     const cx = c.getContext("2d");
+    try { instrument(cx); } catch { /* read-only context: no click selection */ }
+    BOXES = [];
+    TRACKERS = [];
     draw(cx, images, i + 1, plan.length);
     endShift(cx);
+    try { c.elBoxes = BOXES; } catch { /* ignore */ }
     footSource(cx, d0, draw.kind);
     try { c.pageKind = draw.kind; } catch { /* read-only canvas object */ }
     return c;

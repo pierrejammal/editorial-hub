@@ -75,6 +75,10 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
   const [carPage, setCarPage] = useState(0);
   const [carCount, setCarCount] = useState(0);
   const [carKinds, setCarKinds] = useState([]);
+  // click on an element of a carousel page → its own size / position controls
+  const [elBoxes, setElBoxes] = useState([]);
+  const [hoverKey, setHoverKey] = useState(null);
+  const [selEl, setSelEl] = useState(null);
   const isCarousel = version === "K";
   // "Mis à jour par l'IA": flash + badge on the preview, and the carousel page to jump to
   const [aiFlash, setAiFlash] = useState(null);
@@ -178,6 +182,7 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         ctx.clearRect(0, 0, VW, VH);
         ctx.drawImage(pages[pg], 0, 0);
         thumbSrc = pages[0]; // "Mes posts" shows the cover
+        setElBoxes(pages[pg].elBoxes || []);
       } else {
         renderVisual(c.getContext("2d"), { post: localPost, version, images, template });
         setAssistView({ format: version, page: 0, pageCount: 0, pageKind: null, pageLabel: "" });
@@ -391,6 +396,108 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
 
   // "Déplacer": drag the text up or down directly on the preview (same setting as "Position du texte")
   const [moveMode, setMoveMode] = useState(false);
+
+  const openZoom = () => {
+    try { setZoom(canvasRef.current.toDataURL("image/png")); } catch { /* protected logo: no zoom */ }
+  };
+
+  // ---------- click selection of an element (carousel) ----------
+  useEffect(() => { setSelEl(null); setHoverKey(null); }, [carPage, version]);
+  useEffect(() => {
+    if (!selEl) return undefined;
+    const onKey = (e) => e.key === "Escape" && setSelEl(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selEl]);
+  const hitAt = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - r.left) * VW) / r.width;
+    const y = ((e.clientY - r.top) * VH) / r.height;
+    const pad = 12;
+    const hits = elBoxes.filter((b) => x >= b.x0 - pad && x <= b.x1 + pad && y >= b.y0 - pad && y <= b.y1 + pad);
+    hits.sort((a, b) => (a.x1 - a.x0) * (a.y1 - a.y0) - (b.x1 - b.x0) * (b.y1 - b.y0)); // smallest first
+    return hits[0] || null;
+  };
+  const canvasClick = (e) => {
+    if (moveMode) return;
+    if (isCarousel) {
+      const hit = hitAt(e);
+      if (hit) { setSelEl(hit.key); return; }
+      if (selEl) { setSelEl(null); return; }
+    }
+    openZoom();
+  };
+  const canvasHover = isCarousel && !moveMode ? {
+    onMouseMove: (e) => { const h = hitAt(e); const k = h ? h.key : null; if (k !== hoverKey) setHoverKey(k); },
+    onMouseLeave: () => setHoverKey(null),
+  } : {};
+  const EL_NAMES = { heading: "Titre de la page", title: "Titre", source: "Source", figure: "Chiffre clé", summary: "Résumé",
+    facts: "Faits", chartTitle: "Titre du graphique", chart: "Graphique", note: "Phrase sous le graphique", date: "Échéance",
+    quote: "Message", cta: "Question et appel de fin", body: "Contenu de la page" };
+  const elName = (key) => {
+    const id = String(key || "").split(":").slice(1).join(":");
+    if (id.startsWith("pt-")) return `Point ${Number(id.slice(3)) + 1}`;
+    if (id.startsWith("blk-")) return "Partie ajoutée";
+    return EL_NAMES[id] || id;
+  };
+  const boxOf = (key) => elBoxes.find((b) => b.key === key);
+  const pct = (n, total) => `${(n / total) * 100}%`;
+  const outline = (key, strong) => {
+    const b = boxOf(key);
+    if (!b) return null;
+    return (
+      <span key={`o-${key}`} aria-hidden="true" className={`pointer-events-none absolute rounded ${strong ? "border-2 border-forsides-red" : "border border-dashed border-forsides-red/70"}`}
+        style={{ left: pct(b.x0 - 10, VW), top: pct(b.y0 - 10, VH), width: pct(b.x1 - b.x0 + 20, VW), height: pct(b.y1 - b.y0 + 20, VH) }} />
+    );
+  };
+  const elAll = v.el || {};
+  const selCur = selEl ? elAll[selEl] || {} : {};
+  const setSel = (patch) => updateVisual({ el: { ...elAll, [selEl]: { ...selCur, ...patch } } });
+  const selBox = selEl ? boxOf(selEl) : null;
+  const elPopover = selEl && selBox && (
+    <div data-testid="visual-el-popover" onClick={(e) => e.stopPropagation()}
+      className="absolute z-20 w-64 rounded-xl bg-white p-3 text-xs shadow-xl ring-1 ring-slate-200"
+      style={{
+        left: `min(${pct(Math.max(0, selBox.x0), VW)}, calc(100% - 16.5rem))`,
+        ...(selBox.y1 / VH > 0.62 ? { bottom: pct(VH - selBox.y0 + 16, VH) } : { top: pct(selBox.y1 + 16, VH) }),
+      }}>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="font-semibold text-forsides-ink">{elName(selEl)}</span>
+        <button type="button" aria-label="Fermer" onClick={() => setSelEl(null)} className="text-slate-400 hover:text-forsides-red"><X className="h-3.5 w-3.5" /></button>
+      </div>
+      <label className="flex items-center gap-2 text-forsides-slate">
+        <span className="w-14">Taille</span>
+        <input type="range" min={0.5} max={1.6} step={0.05} value={Number(selCur.s) || 1} data-testid="visual-el-size"
+          onChange={(e) => setSel({ s: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
+        <span className="w-9 text-right font-mono">{Math.round((Number(selCur.s) || 1) * 100)}%</span>
+      </label>
+      <label className="mt-1.5 flex items-center gap-2 text-forsides-slate">
+        <span className="w-14">Position</span>
+        <input type="range" min={-300} max={300} step={5} value={Number(selCur.y) || 0} data-testid="visual-el-pos"
+          onChange={(e) => setSel({ y: Number(e.target.value) })} className="flex-1 accent-[#C0453A]" />
+        <span className="w-9 text-right font-mono">{(Number(selCur.y) || 0) > 0 ? `↓${selCur.y}` : (Number(selCur.y) || 0) < 0 ? `↑${-selCur.y}` : "0"}</span>
+      </label>
+      <div className="mt-2 flex items-center justify-between">
+        <span className="flex gap-1">
+          <button type="button" aria-label="Monter" onClick={() => setSel({ y: Math.max(-300, (Number(selCur.y) || 0) - 10) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">↑</button>
+          <button type="button" aria-label="Descendre" onClick={() => setSel({ y: Math.min(300, (Number(selCur.y) || 0) + 10) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">↓</button>
+          <button type="button" aria-label="Plus petit" onClick={() => setSel({ s: Math.max(0.5, Math.round(((Number(selCur.s) || 1) - 0.05) * 100) / 100) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">A−</button>
+          <button type="button" aria-label="Plus grand" onClick={() => setSel({ s: Math.min(1.6, Math.round(((Number(selCur.s) || 1) + 0.05) * 100) / 100) })} className="rounded bg-slate-100 px-2 py-0.5 hover:bg-slate-200">A+</button>
+        </span>
+        {(selCur.s || selCur.y) ? (
+          <button type="button" onClick={() => { const next = { ...elAll }; delete next[selEl]; updateVisual({ el: next }); }}
+            className="text-slate-400 hover:text-forsides-red">Rétablir</button>
+        ) : null}
+      </div>
+    </div>
+  );
+  const selectionLayer = isCarousel && (
+    <>
+      {hoverKey && hoverKey !== selEl && outline(hoverKey, false)}
+      {selEl && outline(selEl, true)}
+      {elPopover}
+    </>
+  );
   const dragRef = useRef(null);
   const posKey = isCarousel ? `k:${carKinds[carPage] || "cover"}` : (version === "C" && !chartOk ? "A" : version);
   const dragProps = moveMode ? {
@@ -426,9 +533,6 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
     </span>
   );
 
-  const openZoom = () => {
-    try { setZoom(canvasRef.current.toDataURL("image/png")); } catch { /* protected logo: no zoom */ }
-  };
   useEffect(() => {
     if (!zoom) return undefined;
     const onKey = (e) => e.key === "Escape" && setZoom(null);
@@ -483,14 +587,16 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
         <div className="flex justify-center">
           <div className="relative">
             <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas"
-              onClick={moveMode ? undefined : openZoom}
-              title={moveMode ? "Glissez pour déplacer le texte" : "Cliquer pour agrandir"}
+              onClick={canvasClick}
+              {...canvasHover}
+              title={moveMode ? "Glissez pour déplacer le texte" : isCarousel ? "Cliquez sur un texte pour régler sa taille et sa position" : "Cliquer pour agrandir"}
               {...dragProps}
               style={{ ...(fit ? { width: fit.w, height: fit.h } : {}), ...(dragProps.style || {}) }}
               className={`block cursor-zoom-in rounded-lg border bg-white shadow-md ${moveMode ? "border-forsides-red ring-2 ring-forsides-red/40" : "border-slate-200"} ${fit ? "" : "h-auto w-full"}`} />
             {isCarousel && carNav}
             {aiBadge}
             {moveHint}
+            {selectionLayer}
           </div>
         </div>
 
@@ -548,10 +654,12 @@ export const VisualPreview = ({ post: postProp, onVisualChange, onThumb, frozen 
       </div>
 
       <div className="relative overflow-hidden rounded-lg border border-slate-200 shadow-inner">
-        <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full" {...dragProps} />
+        <canvas ref={canvasRef} width={VW} height={VH} data-testid="visual-canvas" className="block h-auto w-full"
+          onClick={canvasClick} {...canvasHover} {...dragProps} />
         {isCarousel && carNav}
         {aiBadge}
         {moveHint}
+        {selectionLayer}
       </div>
 
       <div className="mt-4 space-y-3">
